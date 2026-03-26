@@ -202,8 +202,8 @@ export class GatewayClient {
   // --- Typed convenience methods ---
 
   async listAgents(): Promise<Agent[]> {
-    const result = await this.request<Agent[]>("agents.list");
-    return result ?? [];
+    const result = await this.request<{ agents: Agent[] }>("agents.list", {});
+    return result?.agents ?? [];
   }
 
   async getConfig(): Promise<OpenClawConfig> {
