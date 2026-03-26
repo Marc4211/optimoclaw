@@ -22,12 +22,21 @@ import {
 } from "@/lib/gateway";
 import { mockAgents } from "@/lib/mock-data";
 
+export interface GatewayUsageData {
+  raw: Record<string, unknown> | null;
+  costRaw: Record<string, unknown> | null;
+  /** Per-model token usage extracted from usage.status, if available */
+  perModel: Array<{ model: string; inputTokens: number; outputTokens: number; totalTokens: number }>;
+  loaded: boolean;
+}
+
 interface GatewayContextValue extends GatewayState {
   client: GatewayClient | null;
   agents: Agent[];
   gateways: SavedGateway[];
   activeGateway: SavedGateway | null;
   mounted: boolean;
+  gatewayUsage: GatewayUsageData;
   connect: (gateway: SavedGateway) => Promise<void>;
   disconnect: () => void;
   switchGateway: (id: string) => Promise<void>;
@@ -49,6 +58,9 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [gateways, setGateways] = useState<SavedGateway[]>([]);
   const [activeGateway, setActiveGateway] = useState<SavedGateway | null>(null);
+  const [gatewayUsage, setGatewayUsage] = useState<GatewayUsageData>({
+    raw: null, costRaw: null, perModel: [], loaded: false,
+  });
   const clientRef = useRef<GatewayClient | null>(null);
   // Track client instance in state so React re-renders when it changes
   const [clientInstance, setClientInstance] = useState<GatewayClient | null>(null);
@@ -67,6 +79,72 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
       }));
     }
     setMounted(true);
+  }, []);
+
+  // Fetch usage.status and usage.cost from the gateway (best-effort)
+  const fetchGatewayUsage = useCallback(async (client: GatewayClient) => {
+    try {
+      const [usageRaw, costRaw] = await Promise.all([
+        client.getUsageStatus(),
+        client.getUsageCost(),
+      ]);
+
+      console.log("[GatewayContext] usage.status response:", JSON.stringify(usageRaw).slice(0, 1000));
+      console.log("[GatewayContext] usage.cost response:", JSON.stringify(costRaw).slice(0, 1000));
+
+      // Try to extract per-model token data from the usage response.
+      // The exact shape isn't documented yet, so we try common patterns.
+      const perModel: GatewayUsageData["perModel"] = [];
+
+      if (usageRaw) {
+        // Pattern 1: { models: { "claude-haiku": { input: N, output: N } } }
+        const models = usageRaw.models as Record<string, Record<string, number>> | undefined;
+        if (models && typeof models === "object") {
+          for (const [model, data] of Object.entries(models)) {
+            if (data && typeof data === "object") {
+              perModel.push({
+                model,
+                inputTokens: data.input ?? data.inputTokens ?? 0,
+                outputTokens: data.output ?? data.outputTokens ?? 0,
+                totalTokens: (data.input ?? data.inputTokens ?? 0) + (data.output ?? data.outputTokens ?? 0),
+              });
+            }
+          }
+        }
+
+        // Pattern 2: { byModel: [{ model: "...", input: N, output: N }] }
+        const byModel = usageRaw.byModel as Array<Record<string, unknown>> | undefined;
+        if (Array.isArray(byModel) && perModel.length === 0) {
+          for (const entry of byModel) {
+            perModel.push({
+              model: String(entry.model ?? "unknown"),
+              inputTokens: Number(entry.input ?? entry.inputTokens ?? 0),
+              outputTokens: Number(entry.output ?? entry.outputTokens ?? 0),
+              totalTokens: Number(entry.total ?? entry.totalTokens ?? 0),
+            });
+          }
+        }
+
+        // Pattern 3: flat { inputTokens: N, outputTokens: N } (no per-model breakdown)
+        if (perModel.length === 0 && typeof usageRaw.inputTokens === "number") {
+          perModel.push({
+            model: "all",
+            inputTokens: Number(usageRaw.inputTokens),
+            outputTokens: Number(usageRaw.outputTokens ?? 0),
+            totalTokens: Number(usageRaw.inputTokens) + Number(usageRaw.outputTokens ?? 0),
+          });
+        }
+      }
+
+      setGatewayUsage({
+        raw: usageRaw,
+        costRaw,
+        perModel,
+        loaded: true,
+      });
+    } catch {
+      setGatewayUsage((prev) => ({ ...prev, loaded: true }));
+    }
   }, []);
 
   const refreshAgents = useCallback(async () => {
@@ -127,6 +205,9 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
           connecting: false,
           error: null,
         });
+
+        // Fetch usage data in the background (best-effort)
+        fetchGatewayUsage(client);
       } catch (err) {
         setState((prev) => ({
           ...prev,
@@ -203,6 +284,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
         agents,
         gateways,
         activeGateway,
+        gatewayUsage,
         mounted,
         connect: connectToGateway,
         disconnect,

@@ -4,8 +4,10 @@ import { TrendingDown, TrendingUp, Minus } from "lucide-react";
 import { formatCost } from "@/lib/optimizer";
 
 interface CostSummaryProps {
-  /** Fixed actual spend from Admin API — does NOT change with levers */
+  /** Fixed actual spend — does NOT change with levers */
   actualCost: number | null;
+  /** Source of actualCost: "admin-api" or "gateway" */
+  actualSource?: "admin-api" | "gateway";
   /** Projected/estimated cost — updates as user changes levers */
   projectedCost: number;
   hasChanges: boolean;
@@ -15,6 +17,7 @@ interface CostSummaryProps {
 
 export default function CostSummary({
   actualCost,
+  actualSource,
   projectedCost,
   hasChanges,
   onApply,
@@ -28,11 +31,13 @@ export default function CostSummary({
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-surface p-4">
       <div className="flex flex-wrap items-center gap-6">
-        {/* Actual — fixed from Admin API, never moves */}
+        {/* Actual — fixed, never moves with levers */}
         {hasActual && (
           <div>
             <p className="text-xs text-muted-foreground">
-              Actual (last 30 days)
+              {actualSource === "gateway"
+                ? "Actual (from gateway)"
+                : "Actual (last 30 days)"}
             </p>
             <p className="font-mono text-lg font-semibold">
               {formatCost(actualCost)}

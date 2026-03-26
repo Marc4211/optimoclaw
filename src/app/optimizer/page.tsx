@@ -75,7 +75,7 @@ function mapContextLoad(v?: string): ContextLoadOption | undefined {
 
 export default function OptimizerPage() {
   const { hasRates, loaded, models, config: ratesConfig } = useRates();
-  const { client, connected, activeGateway, agents } = useGateway();
+  const { client, connected, activeGateway, agents, gatewayUsage } = useGateway();
   const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...mockCurrentConfig });
   const [values, setValues] = useState<LeverValue>({ ...mockCurrentConfig });
   const [showDiff, setShowDiff] = useState(false);
@@ -86,9 +86,36 @@ export default function OptimizerPage() {
   const [tuneMode, setTuneMode] = useState<TuneMode | null>(null);
   const [showTuneChooser, setShowTuneChooser] = useState(false);
 
-  const realBaselineMonthly = ratesConfig?.realSpend?.monthlyEstimate ?? 0;
+  const adminApiMonthly = ratesConfig?.realSpend?.monthlyEstimate ?? 0;
   const perModelUsage = ratesConfig?.realSpend?.perModel;
   const agentCount = connected && agents.length > 0 ? agents.length : 5;
+
+  // Compute actual cost from gateway usage × manual rates (fallback when no Admin API)
+  const gatewayDerivedMonthly = useMemo(() => {
+    if (adminApiMonthly > 0) return 0; // Admin API takes precedence
+    if (!gatewayUsage.loaded || gatewayUsage.perModel.length === 0) return 0;
+    if (!hasRates || models.length === 0) return 0;
+
+    let totalCost = 0;
+    for (const mu of gatewayUsage.perModel) {
+      // Match gateway model name to our rate table
+      const lower = mu.model.toLowerCase();
+      let rate = models.find((r) => lower.includes(r.model.replace("claude-", "")));
+      if (!rate) rate = models.find((r) => lower.includes("haiku") && r.model === "claude-haiku");
+      if (!rate) rate = models.find((r) => lower.includes("sonnet") && r.model === "claude-sonnet");
+      if (rate) {
+        totalCost +=
+          (mu.inputTokens * rate.inputPerMillion) / 1_000_000 +
+          (mu.outputTokens * rate.outputPerMillion) / 1_000_000;
+      }
+    }
+    // The gateway usage covers the session lifetime, not necessarily 30 days.
+    // Return as-is — the label will say "from gateway" not "last 30 days".
+    return totalCost;
+  }, [adminApiMonthly, gatewayUsage, hasRates, models]);
+
+  // The actual baseline: prefer Admin API, fall back to gateway-derived
+  const realBaselineMonthly = adminApiMonthly > 0 ? adminApiMonthly : gatewayDerivedMonthly;
 
   // Load real config from gateway when connected
   useEffect(() => {
@@ -269,8 +296,11 @@ export default function OptimizerPage() {
               {connected
                 ? `Reading live config from ${activeGateway?.name ?? "your gateway"}`
                 : "Using default settings. Connect a gateway for live config."}
-              {realBaselineMonthly > 0 && (
-                <> &middot; Est. ${realBaselineMonthly.toFixed(0)}/mo (last 30 days)</>
+              {adminApiMonthly > 0 && (
+                <> &middot; ${adminApiMonthly.toFixed(0)}/mo actual (last 30 days)</>
+              )}
+              {adminApiMonthly === 0 && gatewayDerivedMonthly > 0 && (
+                <> &middot; ~${gatewayDerivedMonthly.toFixed(0)} est. (from gateway usage &times; your rates)</>
               )}
             </p>
           </div>
@@ -329,6 +359,7 @@ export default function OptimizerPage() {
         {/* Cost summary */}
         <CostSummary
           actualCost={realBaselineMonthly > 0 ? realBaselineMonthly : null}
+          actualSource={adminApiMonthly > 0 ? "admin-api" : gatewayDerivedMonthly > 0 ? "gateway" : undefined}
           projectedCost={projectedCost.total}
           hasChanges={hasChanges}
           onApply={handleApply}

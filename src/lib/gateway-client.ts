@@ -324,6 +324,33 @@ export class GatewayClient {
     return config;
   }
 
+  /**
+   * Fetch token usage stats from the gateway.
+   * Returns whatever the gateway provides — response shape is not yet documented,
+   * so we return the raw payload and let the caller parse it.
+   */
+  async getUsageStatus(): Promise<Record<string, unknown> | null> {
+    try {
+      return await this.request<Record<string, unknown>>("usage.status", {});
+    } catch (err) {
+      console.warn("[GatewayClient] usage.status failed:", err);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch cost breakdown from the gateway.
+   * Returns whatever the gateway provides — response shape is not yet documented.
+   */
+  async getUsageCost(): Promise<Record<string, unknown> | null> {
+    try {
+      return await this.request<Record<string, unknown>>("usage.cost", {});
+    } catch (err) {
+      console.warn("[GatewayClient] usage.cost failed:", err);
+      return null;
+    }
+  }
+
   async patchConfig(patch: Record<string, unknown>): Promise<unknown> {
     return this.request("config.patch", patch);
   }
