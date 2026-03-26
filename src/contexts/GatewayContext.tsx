@@ -64,24 +64,10 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshAgents = useCallback(async () => {
+    // Agents come from the connect snapshot, not a separate API call.
+    // If not connected, show mock data for demo/dev mode.
     if (!clientRef.current?.connected) {
       setAgents(mockAgents);
-      return;
-    }
-    try {
-      const list = await clientRef.current.listAgents();
-      setAgents(
-        list.map((a) => ({
-          id: a.id ?? a.name,
-          name: a.name,
-          model: a.model ?? "unknown",
-          status: a.status ?? "offline",
-          sessionCount: a.sessionCount ?? 0,
-          tokenUsage: a.tokenUsage ?? 0,
-        }))
-      );
-    } catch {
-      // If agent list fails, keep current data
     }
   }, []);
 
@@ -95,11 +81,16 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
           clientRef.current = null;
         }
 
-        const client = await testConnection({
+        const { client, agents: snapshotAgents } = await testConnection({
           url: gateway.url,
           token: gateway.token,
         });
         clientRef.current = client;
+
+        // Set agents from the connect snapshot
+        if (snapshotAgents.length > 0) {
+          setAgents(snapshotAgents);
+        }
 
         // Listen for state changes
         client.onStateChange((newState) => {
@@ -107,23 +98,15 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
             setState((prev) => ({ ...prev, connected: false }));
           } else if (newState === "connected") {
             setState((prev) => ({ ...prev, connected: true }));
-            refreshAgents();
           }
         });
 
         // Listen for agent state events
         client.onEvent((event) => {
           if (event.event === "agent.state") {
-            refreshAgents();
+            // Future: update individual agent status from event payload
           }
         });
-
-        // Subscribe to session events for live updates
-        try {
-          await client.subscribeSessions();
-        } catch {
-          // Not critical if subscription fails
-        }
 
         // Persist the gateway and mark it active
         saveGateway(gateway);
@@ -137,8 +120,6 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
           connecting: false,
           error: null,
         });
-
-        await refreshAgents();
       } catch (err) {
         setState((prev) => ({
           ...prev,

@@ -54,7 +54,7 @@ export class GatewayClient {
 
   // --- Connection lifecycle ---
 
-  connect(): Promise<void> {
+  connect(): Promise<Agent[]> {
     return new Promise((resolve, reject) => {
       this.shouldReconnect = true;
       this.emitState("connecting");
@@ -114,7 +114,27 @@ export class GatewayClient {
             this._connected = true;
             this.reconnectAttempt = 0;
             this.emitState("connected");
-            resolve();
+
+            // Extract agents from the hello-ok snapshot
+            const payload = frame.payload as Record<string, unknown> | undefined;
+            const snapshot = payload?.snapshot as Record<string, unknown> | undefined;
+            const snapshotAgents = (snapshot?.agents as unknown[]) ?? [];
+            const agents: Agent[] = snapshotAgents.map((a: unknown) => {
+              const agent = a as Record<string, unknown>;
+              const sessions = agent.sessions as Record<string, unknown> | undefined;
+              const heartbeat = agent.heartbeat as Record<string, unknown> | undefined;
+              const recent = sessions?.recent as unknown[] | undefined;
+              return {
+                id: String(agent.agentId ?? ""),
+                name: String(agent.agentId ?? ""),
+                model: String(heartbeat?.model ?? "unknown"),
+                status: (recent?.length ?? 0) > 0 ? "online" as const : "idle" as const,
+                sessionCount: Number(sessions?.count ?? 0),
+                tokenUsage: 0,
+              };
+            });
+
+            resolve(agents);
           } else {
             const errMsg =
               frame.error?.message ?? "Connection rejected by gateway";
@@ -200,11 +220,6 @@ export class GatewayClient {
   }
 
   // --- Typed convenience methods ---
-
-  async listAgents(): Promise<Agent[]> {
-    const result = await this.request<{ agents: Agent[] }>("agents.list", {});
-    return result?.agents ?? [];
-  }
 
   async getConfig(): Promise<OpenClawConfig> {
     return this.request<OpenClawConfig>("config.get");

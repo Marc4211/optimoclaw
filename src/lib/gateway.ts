@@ -1,4 +1,4 @@
-import { GatewayConfig, SavedGateway } from "@/types";
+import { GatewayConfig, SavedGateway, Agent } from "@/types";
 import { GatewayClient } from "./gateway-client";
 
 // ---------------------------------------------------------------------------
@@ -105,11 +105,13 @@ export function loadActiveGateway(): SavedGateway | null {
 // Connection test (unchanged)
 // ---------------------------------------------------------------------------
 
-export async function testConnection(config: GatewayConfig): Promise<GatewayClient> {
+export async function testConnection(
+  config: GatewayConfig
+): Promise<{ client: GatewayClient; agents: Agent[] }> {
   if (!config.url || !config.token) {
     throw new Error("Gateway URL and token are required");
   }
   const client = new GatewayClient(config.url, config.token);
-  await client.connect();
-  return client;
+  const agents = await client.connect();
+  return { client, agents };
 }
