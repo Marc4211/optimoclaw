@@ -56,12 +56,23 @@ export interface EventFrame {
 
 export type GatewayFrame = ReqFrame | ResFrame | EventFrame;
 
+export interface DeviceAuthPayload {
+  id: string;
+  publicKey: string;
+  signature: string;
+  signedAt: string;
+  nonce: string;
+}
+
 export interface ConnectParams {
   token: string;
   version: string;
   platform: string;
+  deviceFamily: string;
   role: string;
   scopes: string[];
+  device: DeviceAuthPayload;
+  deviceToken?: string; // present on reconnects to skip full pairing
 }
 
 export interface ConnectResponse {
@@ -69,6 +80,7 @@ export interface ConnectResponse {
   server: { version: string; name: string };
   supportedMethods: string[];
   supportedEvents: string[];
+  deviceToken?: string; // issued on first connect — persist for reconnects
   snapshot?: {
     agents?: Agent[];
     sessions?: unknown[];
@@ -82,9 +94,7 @@ export interface OpenClawConfig {
       model?: { primary?: string; fallbacks?: string[] };
       heartbeat?: { every?: string; model?: string; target?: string };
       compaction?: { model?: string; mode?: string };
-      contextPruning?: { mode?: string; ttl?: string };
-      maxConcurrentSubagents?: number;
-      maxConcurrent?: number;
+      subagents?: { maxConcurrent?: number };
       blockStreamingDefault?: string;
     };
     list?: Array<{

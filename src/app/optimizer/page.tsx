@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { LeverValue } from "@/types/optimizer";
+import { LeverValue, ModelOption } from "@/types/optimizer";
 import { OpenClawConfig } from "@/types";
 import {
   levers,
@@ -24,14 +24,14 @@ function extractLeverValues(config: OpenClawConfig): LeverValue {
   return {
     heartbeatModel: mapModel(defaults?.heartbeat?.model) ?? mockCurrentConfig.heartbeatModel,
     heartbeatFrequency: mapFrequency(defaults?.heartbeat?.every) ?? mockCurrentConfig.heartbeatFrequency,
-    defaultModel: mapModel(defaults?.model?.primary) as "claude-haiku" | "claude-sonnet" ?? mockCurrentConfig.defaultModel,
-    compactionModel: mapModel(defaults?.compaction?.model) as "local-ollama" | "claude-haiku" ?? mockCurrentConfig.compactionModel,
+    defaultModel: (mapModel(defaults?.model?.primary) as "claude-haiku" | "claude-sonnet" | undefined) ?? mockCurrentConfig.defaultModel,
+    compactionModel: (mapModel(defaults?.compaction?.model) as "local-ollama" | "claude-haiku" | undefined) ?? mockCurrentConfig.compactionModel,
     compactionThreshold: mockCurrentConfig.compactionThreshold, // TTL doesn't map directly to token count
-    subagentConcurrency: defaults?.maxConcurrentSubagents ?? defaults?.maxConcurrent ?? mockCurrentConfig.subagentConcurrency,
+    subagentConcurrency: defaults?.subagents?.maxConcurrent ?? mockCurrentConfig.subagentConcurrency,
   };
 }
 
-function mapModel(model?: string): string | undefined {
+function mapModel(model?: string): ModelOption | undefined {
   if (!model) return undefined;
   const lower = model.toLowerCase();
   if (lower.includes("haiku")) return "claude-haiku";

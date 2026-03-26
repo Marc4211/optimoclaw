@@ -7,6 +7,13 @@ import {
   ConnectResponse,
   OpenClawConfig,
 } from "@/types";
+import {
+  getOrCreateIdentity,
+  signChallenge,
+  saveDeviceToken,
+  getDeviceToken,
+  clearDeviceToken,
+} from "./device-identity";
 
 type EventHandler = (event: EventFrame) => void;
 type StateHandler = (state: "connecting" | "connected" | "disconnected") => void;
@@ -82,25 +89,56 @@ export class GatewayClient {
           return;
         }
 
-        // Handle connect challenge
+        // Handle connect challenge — sign with Ed25519 device key
         if (
           frame.type === "event" &&
           frame.event === "connect.challenge"
         ) {
           const payload = frame.payload as { nonce?: string };
-          this.challengeNonce = payload?.nonce ?? null;
-          // Send connect request
+          const nonce = payload?.nonce;
+          if (!nonce) {
+            settled = true;
+            reject(new Error("Gateway sent challenge without nonce"));
+            return;
+          }
+          this.challengeNonce = nonce;
+
+          // Load or create stable device identity
+          const identity = getOrCreateIdentity();
+
+          // Sign the v3 challenge payload
+          const deviceAuth = signChallenge(identity, {
+            nonce,
+            token: this.token,
+            platform: "web",
+            deviceFamily: "broadclaw",
+            role: "operator",
+            scopes: ["operator.read", "operator.write"],
+          });
+
+          // Build connect params with device auth
+          const connectParams: Record<string, unknown> = {
+            token: this.token,
+            version: "1.0.0",
+            platform: "web",
+            deviceFamily: "broadclaw",
+            role: "operator",
+            scopes: ["operator.read", "operator.write"],
+            device: deviceAuth,
+          };
+
+          // If we have a device token from a previous session, include it
+          // so the gateway can skip the full pairing flow
+          const existingDeviceToken = getDeviceToken();
+          if (existingDeviceToken) {
+            connectParams.deviceToken = existingDeviceToken;
+          }
+
           this.sendRaw({
             type: "req",
             id: this.generateId(),
             method: "connect",
-            params: {
-              token: this.token,
-              version: "1.0.0",
-              platform: "web",
-              role: "operator",
-              scopes: ["operator.read", "operator.write"],
-            },
+            params: connectParams,
           });
           return;
         }
@@ -112,10 +150,28 @@ export class GatewayClient {
             this._connected = true;
             this.reconnectAttempt = 0;
             this.emitState("connected");
+
+            // Persist device token if the gateway issued one
+            const connectRes = frame.payload as ConnectResponse | undefined;
+            if (connectRes?.deviceToken) {
+              saveDeviceToken(connectRes.deviceToken);
+            }
+
             resolve();
           } else {
+            const errCode = frame.error?.code ?? "";
             const errMsg =
               frame.error?.message ?? "Connection rejected by gateway";
+
+            // Clear device token if auth failed — force re-pair next time
+            if (
+              errCode === "DEVICE_AUTH_NONCE_REQUIRED" ||
+              errCode === "DEVICE_AUTH_SIGNATURE_INVALID" ||
+              errCode === "DEVICE_TOKEN_EXPIRED"
+            ) {
+              clearDeviceToken();
+            }
+
             this._connected = false;
             this.shouldReconnect = false;
             reject(new Error(errMsg));
@@ -265,7 +321,7 @@ export class GatewayClient {
     }
   }
 
-  private sendRaw(frame: Record<string, unknown>): void {
+  private sendRaw(frame: Record<string, unknown> | ReqFrame): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(frame));
     }

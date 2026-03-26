@@ -74,7 +74,7 @@ export const levers: LeverDefinition[] = [
     max: 200000,
     step: 10000,
     formatValue: (v: number) => `${(v / 1000).toFixed(0)}k tokens`,
-    configPath: "agents.defaults.contextPruning.ttl",
+    configPath: "agents.defaults.compaction.threshold",
   },
   {
     key: "subagentConcurrency",
@@ -86,7 +86,7 @@ export const levers: LeverDefinition[] = [
     max: 10,
     step: 1,
     formatValue: (v: number) => `${v} agent${v === 1 ? "" : "s"}`,
-    configPath: "agents.defaults.maxConcurrentSubagents",
+    configPath: "agents.defaults.subagents.maxConcurrent",
   },
 ];
 
