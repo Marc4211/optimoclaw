@@ -177,12 +177,6 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     [activeGateway, disconnect]
   );
 
-  // Don't render children until client-side hydration is complete
-  // to avoid SSR/client mismatch from localStorage reads
-  if (!mounted) {
-    return null;
-  }
-
   return (
     <GatewayContext.Provider
       value={{
