@@ -135,10 +135,6 @@ export default function OptimizerPage() {
     [agentCount, realBaselineMonthly, baseConfig, perModelUsage]
   );
 
-  const currentCost = useMemo(
-    () => calculateCost(baseConfig, hasRates ? models : undefined, costOptions),
-    [baseConfig, hasRates, models, costOptions]
-  );
   const projectedCost = useMemo(
     () => calculateCost(values, hasRates ? models : undefined, costOptions),
     [values, hasRates, models, costOptions]
@@ -332,7 +328,7 @@ export default function OptimizerPage() {
       <div className="space-y-4">
         {/* Cost summary */}
         <CostSummary
-          currentCost={currentCost.total}
+          actualCost={realBaselineMonthly > 0 ? realBaselineMonthly : null}
           projectedCost={projectedCost.total}
           hasChanges={hasChanges}
           onApply={handleApply}
