@@ -74,7 +74,7 @@ export default function AdminKeyFlow({
     if (!usageResult) return;
 
     // Calculate monthly estimate from real spend
-    const periodDays = usageResult.period.days || 7;
+    const periodDays = usageResult.period.days || 30;
     const monthlyEstimate =
       usageResult.cost.totalUsd > 0
         ? (usageResult.cost.totalUsd / periodDays) * 30
