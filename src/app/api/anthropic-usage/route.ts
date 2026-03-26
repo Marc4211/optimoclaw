@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const days = parseInt(searchParams.get("days") ?? "7", 10);
+    const days = parseInt(searchParams.get("days") ?? "30", 10);
     const start = new Date();
     start.setDate(start.getDate() - days);
     const end = new Date();
@@ -46,16 +46,19 @@ export async function GET(request: NextRequest) {
     const startStr = start.toISOString().slice(0, 19) + "Z";
     const endStr = end.toISOString().slice(0, 19) + "Z";
 
-    // Fetch usage (tokens) and cost (USD) in parallel
+    // Fetch usage (tokens, grouped by model) and cost (USD) in parallel
+    const usageParams = new URLSearchParams({
+      starting_at: startStr,
+      ending_at: endStr,
+      bucket_width: "1d",
+      limit: "31",
+    });
+    // Group by model so we get per-model breakdowns for cost-per-call calculation
+    usageParams.append("group_by[]", "model");
+
     const [usageRes, costRes] = await Promise.all([
       fetch(
-        `${ANTHROPIC_API}/v1/organizations/usage_report/messages?` +
-          new URLSearchParams({
-            starting_at: startStr,
-            ending_at: endStr,
-            bucket_width: "1d",
-            limit: "31",
-          }),
+        `${ANTHROPIC_API}/v1/organizations/usage_report/messages?${usageParams.toString()}`,
         { headers: ANTHROPIC_HEADERS(adminKey) }
       ),
       fetch(

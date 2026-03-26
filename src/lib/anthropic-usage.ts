@@ -83,7 +83,7 @@ export function parseClaudeCost(cost: unknown): ParsedCost {
  */
 export async function fetchAnthropicUsage(
   adminKey: string,
-  days: number = 7
+  days: number = 30
 ): Promise<AnthropicUsageResponse> {
   const res = await fetch(`/api/anthropic-usage?days=${days}`, {
     headers: {
@@ -104,11 +104,12 @@ export async function validateAdminKey(adminKey: string): Promise<
       valid: true;
       usage: ParsedUsage;
       cost: ParsedCost;
+      perModel: PerModelUsage[];
       period: { start: string; end: string; days: number };
     }
   | { valid: false; error: string }
 > {
-  const response = await fetchAnthropicUsage(adminKey, 7);
+  const response = await fetchAnthropicUsage(adminKey, 30);
 
   if (!response.available || response.error) {
     return {
@@ -121,15 +122,17 @@ export async function validateAdminKey(adminKey: string): Promise<
 
   const usage = parseClaudeUsage(response.usage);
   const cost = parseClaudeCost(response.cost);
+  const perModel = parsePerModelUsage(response.usage);
 
   return {
     valid: true,
     usage,
     cost,
+    perModel,
     period: response.period ?? {
       start: "",
       end: "",
-      days: 7,
+      days: 30,
     },
   };
 }
@@ -139,6 +142,57 @@ export async function validateAdminKey(adminKey: string): Promise<
  */
 export function looksLikeAdminKey(key: string): boolean {
   return key.startsWith("sk-ant-admin");
+}
+
+// --- Per-model usage parsing ---
+
+export interface PerModelUsage {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  totalTokens: number;
+  /** Number of result rows = rough proxy for number of active days */
+  activeDays: number;
+}
+
+/**
+ * Parse usage report grouped by model into per-model token breakdowns.
+ * Requires the API call to include group_by[]=model.
+ */
+export function parsePerModelUsage(usage: unknown): PerModelUsage[] {
+  const data =
+    (usage as { data?: Array<{ results?: Array<Record<string, unknown>> }> })
+      ?.data ?? [];
+
+  const byModel = new Map<string, PerModelUsage>();
+
+  for (const bucket of data) {
+    for (const r of bucket.results ?? []) {
+      const model = String(r.model ?? "unknown");
+      const existing = byModel.get(model) ?? {
+        model,
+        inputTokens: 0,
+        outputTokens: 0,
+        cachedTokens: 0,
+        totalTokens: 0,
+        activeDays: 0,
+      };
+
+      existing.inputTokens += (r.uncached_input_tokens as number) ?? 0;
+      existing.outputTokens += (r.output_tokens as number) ?? 0;
+      existing.cachedTokens += (r.cache_read_input_tokens as number) ?? 0;
+      existing.activeDays += 1; // each bucket-result pair = 1 day of activity
+      existing.totalTokens =
+        existing.inputTokens + existing.outputTokens + existing.cachedTokens;
+
+      byModel.set(model, existing);
+    }
+  }
+
+  return Array.from(byModel.values()).sort(
+    (a, b) => b.totalTokens - a.totalTokens
+  );
 }
 
 // --- Display helpers ---

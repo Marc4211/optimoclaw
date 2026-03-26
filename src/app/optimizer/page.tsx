@@ -87,6 +87,7 @@ export default function OptimizerPage() {
   const [showTuneChooser, setShowTuneChooser] = useState(false);
 
   const realBaselineMonthly = ratesConfig?.realSpend?.monthlyEstimate ?? 0;
+  const perModelUsage = ratesConfig?.realSpend?.perModel;
   const agentCount = connected && agents.length > 0 ? agents.length : 5;
 
   // Load real config from gateway when connected
@@ -129,9 +130,9 @@ export default function OptimizerPage() {
   const costOptions = useMemo(
     () =>
       realBaselineMonthly > 0
-        ? { agentCount, realBaselineMonthly, baseValues: baseConfig }
+        ? { agentCount, realBaselineMonthly, baseValues: baseConfig, perModel: perModelUsage }
         : { agentCount },
-    [agentCount, realBaselineMonthly, baseConfig]
+    [agentCount, realBaselineMonthly, baseConfig, perModelUsage]
   );
 
   const currentCost = useMemo(
@@ -273,7 +274,7 @@ export default function OptimizerPage() {
                 ? `Reading live config from ${activeGateway?.name ?? "your gateway"}`
                 : "Using default settings. Connect a gateway for live config."}
               {realBaselineMonthly > 0 && (
-                <> &middot; Anchored to ${realBaselineMonthly.toFixed(0)}/mo real spend</>
+                <> &middot; Est. ${realBaselineMonthly.toFixed(0)}/mo (last 30 days)</>
               )}
             </p>
           </div>

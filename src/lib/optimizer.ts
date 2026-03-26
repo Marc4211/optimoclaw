@@ -411,18 +411,21 @@ function getModelCost(
 }
 
 /**
- * Calculate relative cost for a lever configuration.
+ * Calculate monthly cost estimate for a lever configuration.
  *
- * When realBaselineMonthly is provided (from Admin API spend data),
- * we anchor the calculation: the base config = realBaselineMonthly,
- * and we compute deltas as proportional changes from that baseline.
- *
- * Without a baseline, we use the theoretical model.
+ * Uses published per-model rates ($/M tokens) × estimated token volume
+ * per operation × frequency. When realBaselineMonthly is provided
+ * (from Admin API), scales the result so base config = real spend.
  */
 export function calculateCost(
   values: LeverValue,
   customRates?: ModelRate[],
-  options?: { agentCount?: number; realBaselineMonthly?: number; baseValues?: LeverValue }
+  options?: {
+    agentCount?: number;
+    realBaselineMonthly?: number;
+    baseValues?: LeverValue;
+    perModel?: Array<{ model: string; inputTokens: number; outputTokens: number; totalTokens: number }>;
+  }
 ): CostEstimate {
   const agentCount = options?.agentCount ?? 5;
   const rawCost = calculateRawCost(values, customRates, agentCount);
@@ -431,14 +434,19 @@ export function calculateCost(
   if (options?.realBaselineMonthly && options?.baseValues) {
     const baseCost = calculateRawCost(options.baseValues, customRates, agentCount);
     if (baseCost.total > 0) {
-      // Scale: if raw model says base = $50 and real = $111,
-      // then scale factor = 111/50 = 2.22x
-      // projected config raw = $40 → projected real = $40 * 2.22 = $88.80
       const scaleFactor = options.realBaselineMonthly / baseCost.total;
       return {
         monthlyInput: rawCost.monthlyInput * scaleFactor,
         monthlyOutput: rawCost.monthlyOutput * scaleFactor,
         total: rawCost.total * scaleFactor,
+      };
+    }
+    // If theoretical base cost is $0 but we have real spend, use real spend as-is for base
+    if (baseCost.total === 0 && rawCost.total === 0) {
+      return {
+        monthlyInput: 0,
+        monthlyOutput: 0,
+        total: options.realBaselineMonthly,
       };
     }
   }

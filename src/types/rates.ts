@@ -18,6 +18,12 @@ export interface RatesConfig {
     totalUsd: number; // actual spend from cost report
     periodDays: number; // how many days the spend covers
     monthlyEstimate: number; // totalUsd / periodDays * 30
+    perModel?: Array<{
+      model: string; // e.g. "claude-3-5-haiku-20241022"
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+    }>;
   };
 }
 

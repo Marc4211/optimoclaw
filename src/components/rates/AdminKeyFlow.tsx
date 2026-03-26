@@ -38,6 +38,7 @@ export default function AdminKeyFlow({
   const [usageResult, setUsageResult] = useState<{
     usage: ParsedUsage;
     cost: ParsedCost;
+    perModel: Array<{ model: string; inputTokens: number; outputTokens: number; totalTokens: number }>;
     period: { start: string; end: string; days: number };
   } | null>(null);
 
@@ -59,6 +60,7 @@ export default function AdminKeyFlow({
       setUsageResult({
         usage: result.usage,
         cost: result.cost,
+        perModel: result.perModel,
         period: result.period,
       });
     } else {
@@ -87,6 +89,7 @@ export default function AdminKeyFlow({
         totalUsd: usageResult.cost.totalUsd,
         periodDays,
         monthlyEstimate,
+        perModel: usageResult.perModel,
       },
     };
     setRates(config);
@@ -147,7 +150,7 @@ export default function AdminKeyFlow({
               3
             </span>
             <span className="text-muted-foreground">
-              Paste it below — BroadClaw will pull your last 7 days of usage and
+              Paste it below — BroadClaw will pull your last 30 days of usage and
               cost
             </span>
           </li>
