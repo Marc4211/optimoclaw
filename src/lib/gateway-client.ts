@@ -115,11 +115,12 @@ export class GatewayClient {
             this.reconnectAttempt = 0;
             this.emitState("connected");
 
-            // Extract agents from the hello-ok snapshot
-            console.log("hello-ok frame:", JSON.stringify(frame));
+            // Extract agents from hello-ok snapshot
+            // Path: payload.snapshot.health.agents[]
             const payload = frame.payload as Record<string, unknown> | undefined;
             const snapshot = payload?.snapshot as Record<string, unknown> | undefined;
-            const snapshotAgents = (snapshot?.agents as unknown[]) ?? [];
+            const health = snapshot?.health as Record<string, unknown> | undefined;
+            const snapshotAgents = (health?.agents as unknown[]) ?? [];
             const agents: Agent[] = snapshotAgents.map((a: unknown) => {
               const agent = a as Record<string, unknown>;
               const sessions = agent.sessions as Record<string, unknown> | undefined;
