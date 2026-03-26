@@ -9,12 +9,15 @@ import {
   useRef,
   ReactNode,
 } from "react";
-import { GatewayConfig, GatewayState, Agent } from "@/types";
+import { GatewayState, Agent, SavedGateway } from "@/types";
 import { GatewayClient } from "@/lib/gateway-client";
 import {
-  saveGatewayConfig,
-  loadGatewayConfig,
-  clearGatewayConfig,
+  loadGateways,
+  saveGateway,
+  removeGateway as removeGatewayStorage,
+  loadActiveGateway,
+  setActiveGatewayId,
+  clearActiveGatewayId,
   testConnection,
 } from "@/lib/gateway";
 import { mockAgents } from "@/lib/mock-data";
@@ -22,8 +25,13 @@ import { mockAgents } from "@/lib/mock-data";
 interface GatewayContextValue extends GatewayState {
   client: GatewayClient | null;
   agents: Agent[];
-  connect: (config: GatewayConfig) => Promise<void>;
+  gateways: SavedGateway[];
+  activeGateway: SavedGateway | null;
+  connect: (gateway: SavedGateway) => Promise<void>;
   disconnect: () => void;
+  switchGateway: (id: string) => Promise<void>;
+  addGateway: (gw: SavedGateway) => void;
+  deleteGateway: (id: string) => void;
   refreshAgents: () => Promise<void>;
 }
 
@@ -37,13 +45,21 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     error: null,
   });
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [gateways, setGateways] = useState<SavedGateway[]>([]);
+  const [activeGateway, setActiveGateway] = useState<SavedGateway | null>(null);
   const clientRef = useRef<GatewayClient | null>(null);
 
-  // Load saved config on mount
+  // Load saved gateways and active selection on mount
   useEffect(() => {
-    const saved = loadGatewayConfig();
-    if (saved) {
-      setState((prev) => ({ ...prev, config: saved }));
+    const saved = loadGateways();
+    setGateways(saved);
+    const active = loadActiveGateway();
+    if (active) {
+      setActiveGateway(active);
+      setState((prev) => ({
+        ...prev,
+        config: { url: active.url, token: active.token },
+      }));
     }
   }, []);
 
@@ -69,8 +85,8 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const connect = useCallback(
-    async (config: GatewayConfig) => {
+  const connectToGateway = useCallback(
+    async (gateway: SavedGateway) => {
       setState((prev) => ({ ...prev, connecting: true, error: null }));
       try {
         // Disconnect existing client
@@ -79,7 +95,10 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
           clientRef.current = null;
         }
 
-        const client = await testConnection(config);
+        const client = await testConnection({
+          url: gateway.url,
+          token: gateway.token,
+        });
         clientRef.current = client;
 
         // Listen for state changes
@@ -106,15 +125,19 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
           // Not critical if subscription fails
         }
 
-        saveGatewayConfig(config);
+        // Persist the gateway and mark it active
+        saveGateway(gateway);
+        setActiveGatewayId(gateway.id);
+        setGateways(loadGateways());
+        setActiveGateway(gateway);
+
         setState({
-          config,
+          config: { url: gateway.url, token: gateway.token },
           connected: true,
           connecting: false,
           error: null,
         });
 
-        // Load agents
         await refreshAgents();
       } catch (err) {
         setState((prev) => ({
@@ -132,7 +155,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
       clientRef.current.disconnect();
       clientRef.current = null;
     }
-    clearGatewayConfig();
+    // Don't remove the gateway from the list or clear active — just disconnect
     setAgents([]);
     setState({
       config: null,
@@ -142,14 +165,47 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const switchGateway = useCallback(
+    async (id: string) => {
+      const gw = gateways.find((g) => g.id === id);
+      if (!gw) return;
+      await connectToGateway(gw);
+    },
+    [gateways, connectToGateway]
+  );
+
+  const addGateway = useCallback((gw: SavedGateway) => {
+    saveGateway(gw);
+    setGateways(loadGateways());
+  }, []);
+
+  const deleteGateway = useCallback(
+    (id: string) => {
+      // If deleting the active gateway, disconnect first
+      if (activeGateway?.id === id) {
+        disconnect();
+        clearActiveGatewayId();
+        setActiveGateway(null);
+      }
+      removeGatewayStorage(id);
+      setGateways(loadGateways());
+    },
+    [activeGateway, disconnect]
+  );
+
   return (
     <GatewayContext.Provider
       value={{
         ...state,
         client: clientRef.current,
         agents,
-        connect,
+        gateways,
+        activeGateway,
+        connect: connectToGateway,
         disconnect,
+        switchGateway,
+        addGateway,
+        deleteGateway,
         refreshAgents,
       }}
     >

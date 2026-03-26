@@ -52,7 +52,7 @@ function mapFrequency(every?: string): "off" | "60m" | "30m" | "15m" | undefined
 
 export default function OptimizerPage() {
   const { hasRates, loaded, models } = useRates();
-  const { client, connected } = useGateway();
+  const { client, connected, activeGateway } = useGateway();
   const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...mockCurrentConfig });
   const [values, setValues] = useState<LeverValue>({ ...mockCurrentConfig });
   const [showDiff, setShowDiff] = useState(false);
@@ -256,6 +256,7 @@ export default function OptimizerPage() {
       {showDiff && (
         <DiffPreview
           diffs={diffs}
+          gatewayName={activeGateway?.name}
           onConfirm={handleConfirm}
           onCancel={() => setShowDiff(false)}
         />

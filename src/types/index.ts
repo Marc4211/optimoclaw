@@ -14,6 +14,13 @@ export interface GatewayConfig {
   token: string;
 }
 
+export interface SavedGateway {
+  id: string;
+  name: string;
+  url: string;
+  token: string;
+}
+
 export interface GatewayState {
   config: GatewayConfig | null;
   connected: boolean;

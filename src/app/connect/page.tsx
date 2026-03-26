@@ -7,14 +7,20 @@ import { useGateway } from "@/contexts/GatewayContext";
 
 export default function ConnectPage() {
   const router = useRouter();
-  const { connect, connecting, error, connected, config } = useGateway();
-  const [url, setUrl] = useState(config?.url ?? "");
-  const [token, setToken] = useState(config?.token ?? "");
+  const { connect, connecting, error, connected, activeGateway } = useGateway();
+  const [name, setName] = useState("");
+  const [url, setUrl] = useState(activeGateway?.url ?? "");
+  const [token, setToken] = useState(activeGateway?.token ?? "");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    await connect({ url, token });
-    // If connection succeeds, the state updates — we redirect
+    const gatewayName = name.trim() || `Gateway`;
+    await connect({
+      id: crypto.randomUUID(),
+      name: gatewayName,
+      url,
+      token,
+    });
   }
 
   // Redirect on successful connection
@@ -37,6 +43,23 @@ export default function ConnectPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label
+              htmlFor="name"
+              className="mb-1.5 block text-sm text-muted-foreground"
+            >
+              Gateway Name
+            </label>
+            <input
+              id="name"
+              type="text"
+              placeholder="e.g. Production, Digantic, Local"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+
           <div>
             <label
               htmlFor="url"

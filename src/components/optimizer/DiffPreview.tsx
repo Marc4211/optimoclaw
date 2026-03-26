@@ -5,12 +5,14 @@ import { ConfigDiff } from "@/types/optimizer";
 
 interface DiffPreviewProps {
   diffs: ConfigDiff[];
+  gatewayName?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }
 
 export default function DiffPreview({
   diffs,
+  gatewayName,
   onConfirm,
   onCancel,
 }: DiffPreviewProps) {
@@ -67,7 +69,9 @@ export default function DiffPreview({
             onClick={onConfirm}
             className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
           >
-            Apply & Restart Gateway
+            {gatewayName
+              ? `Apply to ${gatewayName} Gateway`
+              : "Apply & Restart Gateway"}
           </button>
         </div>
       </div>
