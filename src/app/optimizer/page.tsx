@@ -9,21 +9,27 @@ import {
   calculateCost,
   calculateDiff,
 } from "@/lib/optimizer";
+import { useRates } from "@/contexts/RatesContext";
 import LeverCard from "@/components/optimizer/LeverCard";
 import CostSummary from "@/components/optimizer/CostSummary";
 import PresetSelector from "@/components/optimizer/PresetSelector";
 import DiffPreview from "@/components/optimizer/DiffPreview";
+import RateSetupCard from "@/components/rates/RateSetupCard";
 
 export default function OptimizerPage() {
+  const { hasRates, loaded, models } = useRates();
   const [values, setValues] = useState<LeverValue>({ ...mockCurrentConfig });
   const [showDiff, setShowDiff] = useState(false);
   const [applied, setApplied] = useState(false);
 
   const currentCost = useMemo(
-    () => calculateCost(mockCurrentConfig),
-    []
+    () => calculateCost(mockCurrentConfig, hasRates ? models : undefined),
+    [hasRates, models]
   );
-  const projectedCost = useMemo(() => calculateCost(values), [values]);
+  const projectedCost = useMemo(
+    () => calculateCost(values, hasRates ? models : undefined),
+    [values, hasRates, models]
+  );
 
   const diffs = useMemo(
     () => calculateDiff(mockCurrentConfig, values),
@@ -31,7 +37,6 @@ export default function OptimizerPage() {
   );
   const hasChanges = diffs.length > 0;
 
-  // Check which preset matches current values, if any
   const activePresetId = useMemo(() => {
     for (const preset of presets) {
       const match = (Object.keys(preset.values) as (keyof LeverValue)[]).every(
@@ -50,30 +55,27 @@ export default function OptimizerPage() {
     []
   );
 
-  // Calculate per-lever cost deltas
   const leverCostDeltas = useMemo(() => {
+    const rates = hasRates ? models : undefined;
     const deltas: Record<string, number> = {};
     for (const lever of levers) {
-      // Calculate cost with just this lever changed vs original
-      const withOriginal = {
-        ...mockCurrentConfig,
-      };
+      const withOriginal = { ...mockCurrentConfig };
       const withChanged = {
         ...mockCurrentConfig,
         [lever.key]: values[lever.key],
       };
       deltas[lever.key] =
-        calculateCost(withChanged).total - calculateCost(withOriginal).total;
+        calculateCost(withChanged, rates).total -
+        calculateCost(withOriginal, rates).total;
     }
     return deltas;
-  }, [values]);
+  }, [values, hasRates, models]);
 
   function handleApply() {
     setShowDiff(true);
   }
 
   function handleConfirm() {
-    // TODO: Write config to gateway
     setShowDiff(false);
     setApplied(true);
   }
@@ -81,6 +83,14 @@ export default function OptimizerPage() {
   function handleReset() {
     setValues({ ...mockCurrentConfig });
     setApplied(false);
+  }
+
+  // Wait for localStorage check before deciding what to show
+  if (!loaded) return null;
+
+  // Show onboarding if no rates configured
+  if (!hasRates) {
+    return <RateSetupCard />;
   }
 
   return (

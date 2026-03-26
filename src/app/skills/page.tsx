@@ -1,19 +1,13 @@
 import { Wrench } from "lucide-react";
+import EmptyState from "@/components/EmptyState";
 
 export default function SkillsPage() {
   return (
-    <div className="flex h-full flex-col items-center justify-center p-8 text-center">
-      <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-        <Wrench size={24} className="text-primary" />
-      </div>
-      <h1 className="text-lg font-semibold">Skill Studio</h1>
-      <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-        Author, test, and publish SKILL.md files with a live test runner and
-        input/output sandbox.
-      </p>
-      <span className="mt-4 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-        Coming in Phase 4
-      </span>
-    </div>
+    <EmptyState
+      icon={Wrench}
+      title="Skill Studio"
+      what="A purpose-built editor for SKILL.md files with live testing, input/output sandboxing, and one-click publish to ClaWHub."
+      why="Coming in Phase 4. This is the most design-intensive panel and is being built last to do it right."
+    />
   );
 }

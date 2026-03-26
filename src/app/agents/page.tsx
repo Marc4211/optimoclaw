@@ -1,8 +1,11 @@
 "use client";
 
-import { Bot } from "lucide-react";
+import Link from "next/link";
+import { Bot, Plug } from "lucide-react";
 import { mockAgents } from "@/lib/mock-data";
 import { Agent } from "@/types";
+import { useGateway } from "@/contexts/GatewayContext";
+import EmptyState from "@/components/EmptyState";
 
 const statusStyles: Record<Agent["status"], { dot: string; label: string }> = {
   online: { dot: "bg-success", label: "Online" },
@@ -17,6 +20,28 @@ function formatTokens(n: number): string {
 }
 
 export default function AgentsPage() {
+  const { connected } = useGateway();
+
+  if (!connected) {
+    return (
+      <EmptyState
+        icon={Bot}
+        title="Agents"
+        what="This page shows all agents running on your gateway — their model, status, active sessions, and token usage."
+        why="No gateway connected yet. Connect to see your agents."
+        action={
+          <Link
+            href="/connect"
+            className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+          >
+            <Plug size={16} />
+            Connect Gateway
+          </Link>
+        }
+      />
+    );
+  }
+
   return (
     <div className="p-8">
       <div className="mb-6">

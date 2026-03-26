@@ -7,6 +7,8 @@ import {
   ModelOption,
   FrequencyOption,
 } from "@/types/optimizer";
+import { ModelRate } from "@/types/rates";
+import { getRateForModel } from "@/lib/rates";
 
 // --- Lever definitions ---
 
@@ -145,8 +147,8 @@ export const presets: Preset[] = [
 
 // --- Cost calculation ---
 
-// Prices per million tokens
-const MODEL_COSTS: Record<ModelOption, { input: number; output: number }> = {
+// Default prices per million tokens (used when no custom rates provided)
+const DEFAULT_MODEL_COSTS: Record<ModelOption, { input: number; output: number }> = {
   "local-ollama": { input: 0, output: 0 },
   "claude-haiku": { input: 0.25, output: 1.25 },
   "claude-sonnet": { input: 3, output: 15 },
@@ -164,26 +166,43 @@ const HEARTBEAT_TOKENS = 2000; // ~2k tokens per heartbeat check
 const SESSION_TOKENS_PER_DAY = 50000; // ~50k tokens per active session per day
 const COMPACTION_TOKENS = 10000; // ~10k tokens per compaction
 
-export function calculateCost(values: LeverValue): CostEstimate {
+function getModelCost(
+  modelKey: ModelOption,
+  customRates?: ModelRate[]
+): { input: number; output: number } {
+  if (modelKey === "local-ollama") return { input: 0, output: 0 };
+  if (customRates) {
+    const rate = getRateForModel(customRates, modelKey);
+    if (rate) {
+      return { input: rate.inputPerMillion, output: rate.outputPerMillion };
+    }
+  }
+  return DEFAULT_MODEL_COSTS[modelKey];
+}
+
+export function calculateCost(
+  values: LeverValue,
+  customRates?: ModelRate[]
+): CostEstimate {
   const agentCount = 5; // assume 5 agents (matches mock data)
   let dailyInput = 0;
   let dailyOutput = 0;
 
   // Heartbeat cost: frequency × agents × tokens per beat
   const beatsPerDay = FREQUENCY_MULTIPLIER[values.heartbeatFrequency];
-  const hbModel = MODEL_COSTS[values.heartbeatModel];
+  const hbModel = getModelCost(values.heartbeatModel, customRates);
   dailyInput += beatsPerDay * agentCount * HEARTBEAT_TOKENS * hbModel.input / 1_000_000;
   dailyOutput += beatsPerDay * agentCount * (HEARTBEAT_TOKENS * 0.3) * hbModel.output / 1_000_000;
 
   // Session cost: concurrency × daily tokens
-  const sessionModel = MODEL_COSTS[values.defaultModel];
+  const sessionModel = getModelCost(values.defaultModel, customRates);
   const dailySessionTokens = SESSION_TOKENS_PER_DAY * values.subagentConcurrency;
   dailyInput += dailySessionTokens * sessionModel.input / 1_000_000;
   dailyOutput += (dailySessionTokens * 0.2) * sessionModel.output / 1_000_000;
 
   // Compaction cost: more compaction at lower thresholds
   const compactionsPerDay = Math.max(1, Math.round(200000 / values.compactionThreshold));
-  const compModel = MODEL_COSTS[values.compactionModel];
+  const compModel = getModelCost(values.compactionModel, customRates);
   dailyInput += compactionsPerDay * agentCount * COMPACTION_TOKENS * compModel.input / 1_000_000;
   dailyOutput += compactionsPerDay * agentCount * (COMPACTION_TOKENS * 0.5) * compModel.output / 1_000_000;
 
