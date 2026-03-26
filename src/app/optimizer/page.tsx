@@ -174,10 +174,16 @@ export default function OptimizerPage() {
     for (const lever of levers) {
       const withOriginal = { ...baseConfig };
       const withChanged = { ...baseConfig, [lever.key]: values[lever.key] };
-      deltas[lever.key] =
-        calculateCost(withChanged, rates, costOptions).total -
-        calculateCost(withOriginal, rates, costOptions).total;
+      const origCost = calculateCost(withOriginal, rates, costOptions).total;
+      const changedCost = calculateCost(withChanged, rates, costOptions).total;
+      deltas[lever.key] = changedCost - origCost;
     }
+    // Debug: always log cost calculation details
+    console.log("[Optimizer] Cost deltas:", deltas);
+    console.log("[Optimizer] Base cost:", calculateCost(baseConfig, rates, costOptions).total.toFixed(2));
+    console.log("[Optimizer] Projected cost:", calculateCost(values, rates, costOptions).total.toFixed(2));
+    console.log("[Optimizer] Rates:", hasRates, models?.map((m) => `${m.model}:$${m.inputPerMillion}/$${m.outputPerMillion}`));
+    console.log("[Optimizer] costOptions:", JSON.stringify(costOptions));
     return deltas;
   }, [values, baseConfig, hasRates, models, costOptions]);
 

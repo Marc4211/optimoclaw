@@ -257,19 +257,43 @@ export class GatewayClient {
     const health = this._snapshot.health as Record<string, unknown> | undefined;
     const agents = (health?.agents as Array<Record<string, unknown>>) ?? [];
 
-    // Find the default agent to extract heartbeat settings
+    // Find the default agent to extract settings
     const defaultAgent = agents.find((a) => a.isDefault) ?? agents[0];
     const heartbeat = defaultAgent?.heartbeat as Record<string, unknown> | undefined;
 
-    // The snapshot gives us per-agent heartbeat config.
-    // We treat the default agent's settings as the "defaults".
+    // The heartbeat model is the best signal we have for the primary model.
+    // In OpenClaw, the heartbeat model is typically a cheaper model than the
+    // primary, but the snapshot doesn't expose model.primary directly.
+    // We extract what we can and let the optimizer page fall back for the rest.
+    const heartbeatModel = String(heartbeat?.model ?? "");
+
+    // Try to infer a reasonable primary model from the agent list.
+    // If any agent has a model string that includes "sonnet", that's likely the primary.
+    // Otherwise fall back to the heartbeat model (which may be haiku).
+    let inferredPrimary = "";
+    for (const a of agents) {
+      const hb = a.heartbeat as Record<string, unknown> | undefined;
+      const model = String(hb?.model ?? "").toLowerCase();
+      if (model.includes("sonnet") || model.includes("opus")) {
+        inferredPrimary = String(hb?.model ?? "");
+        break;
+      }
+    }
+    // If no sonnet/opus found, use the default agent's heartbeat model
+    if (!inferredPrimary) {
+      inferredPrimary = heartbeatModel;
+    }
+
     const config: OpenClawConfig = {
       agents: {
         defaults: {
+          model: {
+            primary: inferredPrimary || undefined,
+          },
           heartbeat: heartbeat
             ? {
                 every: String(heartbeat.every ?? "30m"),
-                model: String(heartbeat.model ?? ""),
+                model: heartbeatModel,
                 target: String(heartbeat.target ?? "none"),
               }
             : undefined,
@@ -296,6 +320,7 @@ export class GatewayClient {
       (config as Record<string, unknown>).sessionDefaults = sessionDefaults;
     }
 
+    console.log("[GatewayClient] Extracted config from snapshot:", JSON.stringify(config).slice(0, 500));
     return config;
   }
 
