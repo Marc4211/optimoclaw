@@ -99,6 +99,17 @@ export default function ConnectPage() {
               required
               className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Find your token in your OpenClaw config file at{" "}
+              <span className="font-mono text-foreground">~/.openclaw/openclaw.json</span>{" "}
+              (or{" "}
+              <span className="font-mono text-foreground">~/.openclaw-[profile]/openclaw.json</span>{" "}
+              if you use profiles) under{" "}
+              <span className="font-mono text-foreground">gateway.auth.token</span>.
+              You can also run{" "}
+              <span className="font-mono text-foreground">openclaw gateway status</span>{" "}
+              in your terminal to confirm your gateway URL and port.
+            </p>
           </div>
 
           {error && (
