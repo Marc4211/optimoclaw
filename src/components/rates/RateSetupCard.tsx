@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { DollarSign, Key, Gauge } from "lucide-react";
+import { DollarSign, BarChart3, Gauge } from "lucide-react";
 import ManualRateForm from "./ManualRateForm";
-import ApiKeyFlow from "./ApiKeyFlow";
+import AdminKeyFlow from "./AdminKeyFlow";
 
-type SetupPath = "choose" | "manual" | "api-key";
+type SetupPath = "choose" | "manual" | "admin-key";
 
 export default function RateSetupCard() {
   const [path, setPath] = useState<SetupPath>("choose");
@@ -14,9 +14,9 @@ export default function RateSetupCard() {
     return <ManualRateForm onBack={() => setPath("choose")} />;
   }
 
-  if (path === "api-key") {
+  if (path === "admin-key") {
     return (
-      <ApiKeyFlow
+      <AdminKeyFlow
         onBack={() => setPath("choose")}
         onFallbackToManual={() => setPath("manual")}
       />
@@ -36,8 +36,8 @@ export default function RateSetupCard() {
             pricing. To get started, we need to know your rates.
           </p>
           <p className="mt-1 text-sm text-muted-foreground/70">
-            Most users can just confirm the defaults — they match Anthropic's
-            published pricing.
+            Most users can just confirm the defaults — they match
+            Anthropic&apos;s published pricing.
           </p>
         </div>
 
@@ -59,17 +59,19 @@ export default function RateSetupCard() {
           </button>
 
           <button
-            onClick={() => setPath("api-key")}
+            onClick={() => setPath("admin-key")}
             className="flex items-start gap-4 rounded-lg border border-border bg-surface p-5 text-left transition-colors hover:bg-surface-hover"
           >
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10">
-              <Key size={20} className="text-accent" />
+              <BarChart3 size={20} className="text-accent" />
             </div>
             <div>
-              <p className="text-sm font-medium">Connect my account</p>
+              <p className="text-sm font-medium">
+                Pull actual spend from Anthropic
+              </p>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                Enter a read-only API key to pull your actual billing rates.
-                Stored locally — never sent anywhere.
+                Requires an Admin API key. Shows your real historical token usage
+                per model — not just estimates.
               </p>
             </div>
           </button>

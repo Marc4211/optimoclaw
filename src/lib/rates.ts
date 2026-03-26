@@ -1,4 +1,4 @@
-import { RatesConfig, ModelRate, ProviderInfo } from "@/types/rates";
+import { RatesConfig, ModelRate } from "@/types/rates";
 
 const STORAGE_KEY = "broadclaw-rates";
 
@@ -43,40 +43,6 @@ export const allDefaultRates: ModelRate[] = [
   ...defaultOpenAIRates,
 ];
 
-// --- Provider info for API key flow ---
-
-export const providers: ProviderInfo[] = [
-  {
-    id: "anthropic",
-    name: "Anthropic",
-    dashboardUrl: "https://console.anthropic.com",
-    keyPageUrl: "https://console.anthropic.com/settings/keys",
-    instructions: [
-      "Go to console.anthropic.com and sign in",
-      "Click Settings in the left sidebar",
-      "Click API Keys",
-      "Click Create Key and name it something like \"BroadClaw read-only\"",
-      "Copy the key and paste it below",
-    ],
-    scopeGuidance:
-      "A standard API key is sufficient. BroadClaw only reads billing usage data — it never makes API calls on your behalf.",
-  },
-  {
-    id: "openai",
-    name: "OpenAI",
-    dashboardUrl: "https://platform.openai.com",
-    keyPageUrl: "https://platform.openai.com/api-keys",
-    instructions: [
-      "Go to platform.openai.com and sign in",
-      "Click the gear icon (Settings) in the top right",
-      "Navigate to API Keys",
-      "Click Create new secret key",
-      "Copy the key and paste it below",
-    ],
-    scopeGuidance:
-      "If available, use a restricted key with read-only billing permissions. BroadClaw only needs to read your usage data.",
-  },
-];
 
 // --- localStorage helpers ---
 
@@ -110,19 +76,3 @@ export function getRateForModel(
   return rates.find((r) => r.model === modelKey) ?? null;
 }
 
-// --- Simulated API key validation ---
-
-export async function validateApiKey(
-  provider: string,
-  _key: string
-): Promise<{ success: boolean; error?: string }> {
-  // TODO: Replace with real API validation
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-
-  // For now, always fail gracefully to demonstrate the fallback flow
-  return {
-    success: false,
-    error:
-      "Billing API access is not yet available. Use manual rate entry instead.",
-  };
-}
