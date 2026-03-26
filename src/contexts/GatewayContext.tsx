@@ -27,6 +27,7 @@ interface GatewayContextValue extends GatewayState {
   agents: Agent[];
   gateways: SavedGateway[];
   activeGateway: SavedGateway | null;
+  mounted: boolean;
   connect: (gateway: SavedGateway) => Promise<void>;
   disconnect: () => void;
   switchGateway: (id: string) => Promise<void>;
@@ -38,6 +39,7 @@ interface GatewayContextValue extends GatewayState {
 const GatewayContext = createContext<GatewayContextValue | null>(null);
 
 export function GatewayProvider({ children }: { children: ReactNode }) {
+  const [mounted, setMounted] = useState(false);
   const [state, setState] = useState<GatewayState>({
     config: null,
     connected: false,
@@ -49,7 +51,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
   const [activeGateway, setActiveGateway] = useState<SavedGateway | null>(null);
   const clientRef = useRef<GatewayClient | null>(null);
 
-  // Load saved gateways and active selection on mount
+  // Load saved gateways and active selection on mount (client-side only)
   useEffect(() => {
     const saved = loadGateways();
     setGateways(saved);
@@ -61,6 +63,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
         config: { url: active.url, token: active.token },
       }));
     }
+    setMounted(true);
   }, []);
 
   const refreshAgents = useCallback(async () => {
@@ -174,6 +177,12 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     [activeGateway, disconnect]
   );
 
+  // Don't render children until client-side hydration is complete
+  // to avoid SSR/client mismatch from localStorage reads
+  if (!mounted) {
+    return null;
+  }
+
   return (
     <GatewayContext.Provider
       value={{
@@ -182,6 +191,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
         agents,
         gateways,
         activeGateway,
+        mounted,
         connect: connectToGateway,
         disconnect,
         switchGateway,
