@@ -24,7 +24,7 @@ export const levers: LeverDefinition[] = [
       { value: "claude-haiku", label: "Claude Haiku" },
       { value: "claude-sonnet", label: "Claude Sonnet" },
     ],
-    configPath: "heartbeat.model",
+    configPath: "agents.defaults.heartbeat.model",
   },
   {
     key: "heartbeatFrequency",
@@ -34,11 +34,11 @@ export const levers: LeverDefinition[] = [
     type: "select",
     options: [
       { value: "off", label: "Off" },
-      { value: "60min", label: "Every 60 min" },
-      { value: "30min", label: "Every 30 min" },
-      { value: "15min", label: "Every 15 min" },
+      { value: "60m", label: "Every 60 min" },
+      { value: "30m", label: "Every 30 min" },
+      { value: "15m", label: "Every 15 min" },
     ],
-    configPath: "heartbeat.interval",
+    configPath: "agents.defaults.heartbeat.every",
   },
   {
     key: "defaultModel",
@@ -50,7 +50,7 @@ export const levers: LeverDefinition[] = [
       { value: "claude-haiku", label: "Claude Haiku" },
       { value: "claude-sonnet", label: "Claude Sonnet" },
     ],
-    configPath: "defaults.model",
+    configPath: "agents.defaults.model.primary",
   },
   {
     key: "compactionModel",
@@ -62,7 +62,7 @@ export const levers: LeverDefinition[] = [
       { value: "local-ollama", label: "Local Ollama" },
       { value: "claude-haiku", label: "Claude Haiku" },
     ],
-    configPath: "compaction.model",
+    configPath: "agents.defaults.compaction.model",
   },
   {
     key: "compactionThreshold",
@@ -74,7 +74,7 @@ export const levers: LeverDefinition[] = [
     max: 200000,
     step: 10000,
     formatValue: (v: number) => `${(v / 1000).toFixed(0)}k tokens`,
-    configPath: "compaction.threshold",
+    configPath: "agents.defaults.contextPruning.ttl",
   },
   {
     key: "subagentConcurrency",
@@ -86,7 +86,7 @@ export const levers: LeverDefinition[] = [
     max: 10,
     step: 1,
     formatValue: (v: number) => `${v} agent${v === 1 ? "" : "s"}`,
-    configPath: "subagents.maxConcurrent",
+    configPath: "agents.defaults.maxConcurrentSubagents",
   },
 ];
 
@@ -94,7 +94,7 @@ export const levers: LeverDefinition[] = [
 
 export const mockCurrentConfig: LeverValue = {
   heartbeatModel: "claude-sonnet",
-  heartbeatFrequency: "30min",
+  heartbeatFrequency: "30m",
   defaultModel: "claude-sonnet",
   compactionModel: "claude-haiku",
   compactionThreshold: 100000,
@@ -110,7 +110,7 @@ export const presets: Preset[] = [
     description: "Minimize cost",
     values: {
       heartbeatModel: "local-ollama",
-      heartbeatFrequency: "60min",
+      heartbeatFrequency: "60m",
       defaultModel: "claude-haiku",
       compactionModel: "local-ollama",
       compactionThreshold: 50000,
@@ -123,7 +123,7 @@ export const presets: Preset[] = [
     description: "Cost and quality",
     values: {
       heartbeatModel: "claude-haiku",
-      heartbeatFrequency: "30min",
+      heartbeatFrequency: "30m",
       defaultModel: "claude-haiku",
       compactionModel: "claude-haiku",
       compactionThreshold: 100000,
@@ -136,7 +136,7 @@ export const presets: Preset[] = [
     description: "Maximize capability",
     values: {
       heartbeatModel: "claude-sonnet",
-      heartbeatFrequency: "15min",
+      heartbeatFrequency: "15m",
       defaultModel: "claude-sonnet",
       compactionModel: "claude-haiku",
       compactionThreshold: 150000,
@@ -156,9 +156,9 @@ const DEFAULT_MODEL_COSTS: Record<ModelOption, { input: number; output: number }
 
 const FREQUENCY_MULTIPLIER: Record<FrequencyOption, number> = {
   off: 0,
-  "60min": 24,
-  "30min": 48,
-  "15min": 96,
+  "60m": 24,
+  "30m": 48,
+  "15m": 96,
 };
 
 // Estimated tokens per operation
@@ -220,7 +220,7 @@ export function calculateCost(
 
 const DISPLAY_LABELS: Record<string, (v: string) => string> = {
   heartbeatModel: (v) => ({ "local-ollama": "Local Ollama", "claude-haiku": "Claude Haiku", "claude-sonnet": "Claude Sonnet" }[v] ?? v),
-  heartbeatFrequency: (v) => ({ off: "Off", "60min": "Every 60 min", "30min": "Every 30 min", "15min": "Every 15 min" }[v] ?? v),
+  heartbeatFrequency: (v) => ({ off: "Off", "60m": "Every 60 min", "30m": "Every 30 min", "15m": "Every 15 min" }[v] ?? v),
   defaultModel: (v) => ({ "claude-haiku": "Claude Haiku", "claude-sonnet": "Claude Sonnet" }[v] ?? v),
   compactionModel: (v) => ({ "local-ollama": "Local Ollama", "claude-haiku": "Claude Haiku" }[v] ?? v),
   compactionThreshold: (v) => `${(Number(v) / 1000).toFixed(0)}k tokens`,

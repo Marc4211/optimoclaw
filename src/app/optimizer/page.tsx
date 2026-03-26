@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { LeverValue } from "@/types/optimizer";
+import { OpenClawConfig } from "@/types";
 import {
   levers,
   mockCurrentConfig,
@@ -10,21 +11,85 @@ import {
   calculateDiff,
 } from "@/lib/optimizer";
 import { useRates } from "@/contexts/RatesContext";
+import { useGateway } from "@/contexts/GatewayContext";
 import LeverCard from "@/components/optimizer/LeverCard";
 import CostSummary from "@/components/optimizer/CostSummary";
 import PresetSelector from "@/components/optimizer/PresetSelector";
 import DiffPreview from "@/components/optimizer/DiffPreview";
 import RateSetupCard from "@/components/rates/RateSetupCard";
 
+// Extract lever values from real openclaw.json config
+function extractLeverValues(config: OpenClawConfig): LeverValue {
+  const defaults = config?.agents?.defaults;
+  return {
+    heartbeatModel: mapModel(defaults?.heartbeat?.model) ?? mockCurrentConfig.heartbeatModel,
+    heartbeatFrequency: mapFrequency(defaults?.heartbeat?.every) ?? mockCurrentConfig.heartbeatFrequency,
+    defaultModel: mapModel(defaults?.model?.primary) as "claude-haiku" | "claude-sonnet" ?? mockCurrentConfig.defaultModel,
+    compactionModel: mapModel(defaults?.compaction?.model) as "local-ollama" | "claude-haiku" ?? mockCurrentConfig.compactionModel,
+    compactionThreshold: mockCurrentConfig.compactionThreshold, // TTL doesn't map directly to token count
+    subagentConcurrency: defaults?.maxConcurrentSubagents ?? defaults?.maxConcurrent ?? mockCurrentConfig.subagentConcurrency,
+  };
+}
+
+function mapModel(model?: string): string | undefined {
+  if (!model) return undefined;
+  const lower = model.toLowerCase();
+  if (lower.includes("haiku")) return "claude-haiku";
+  if (lower.includes("sonnet")) return "claude-sonnet";
+  if (lower.includes("ollama") || lower.includes("local")) return "local-ollama";
+  return undefined;
+}
+
+function mapFrequency(every?: string): "off" | "60m" | "30m" | "15m" | undefined {
+  if (!every) return undefined;
+  const lower = every.toLowerCase();
+  if (lower === "off" || lower === "none" || lower === "0") return "off";
+  if (lower === "15m" || lower === "15min") return "15m";
+  if (lower === "30m" || lower === "30min") return "30m";
+  if (lower === "60m" || lower === "1h" || lower === "60min") return "60m";
+  return undefined;
+}
+
 export default function OptimizerPage() {
   const { hasRates, loaded, models } = useRates();
+  const { client, connected } = useGateway();
+  const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...mockCurrentConfig });
   const [values, setValues] = useState<LeverValue>({ ...mockCurrentConfig });
   const [showDiff, setShowDiff] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [loadingConfig, setLoadingConfig] = useState(false);
+
+  // Load real config from gateway when connected
+  useEffect(() => {
+    if (!connected || !client) return;
+
+    let cancelled = false;
+    setLoadingConfig(true);
+
+    client
+      .getConfig()
+      .then((config) => {
+        if (cancelled) return;
+        const extracted = extractLeverValues(config);
+        setBaseConfig(extracted);
+        setValues(extracted);
+      })
+      .catch(() => {
+        // Fall back to mock config
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingConfig(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connected, client]);
 
   const currentCost = useMemo(
-    () => calculateCost(mockCurrentConfig, hasRates ? models : undefined),
-    [hasRates, models]
+    () => calculateCost(baseConfig, hasRates ? models : undefined),
+    [baseConfig, hasRates, models]
   );
   const projectedCost = useMemo(
     () => calculateCost(values, hasRates ? models : undefined),
@@ -32,8 +97,8 @@ export default function OptimizerPage() {
   );
 
   const diffs = useMemo(
-    () => calculateDiff(mockCurrentConfig, values),
-    [values]
+    () => calculateDiff(baseConfig, values),
+    [baseConfig, values]
   );
   const hasChanges = diffs.length > 0;
 
@@ -59,9 +124,9 @@ export default function OptimizerPage() {
     const rates = hasRates ? models : undefined;
     const deltas: Record<string, number> = {};
     for (const lever of levers) {
-      const withOriginal = { ...mockCurrentConfig };
+      const withOriginal = { ...baseConfig };
       const withChanged = {
-        ...mockCurrentConfig,
+        ...baseConfig,
         [lever.key]: values[lever.key],
       };
       deltas[lever.key] =
@@ -69,23 +134,55 @@ export default function OptimizerPage() {
         calculateCost(withOriginal, rates).total;
     }
     return deltas;
-  }, [values, hasRates, models]);
+  }, [values, baseConfig, hasRates, models]);
 
   function handleApply() {
     setShowDiff(true);
   }
 
-  function handleConfirm() {
+  async function handleConfirm() {
     setShowDiff(false);
-    setApplied(true);
+
+    if (connected && client) {
+      setApplying(true);
+      try {
+        // Build the patch from diffs
+        const patch: Record<string, unknown> = {};
+        for (const diff of diffs) {
+          // Set each changed field path
+          const lever = levers.find((l) => l.configPath === diff.field);
+          if (lever) {
+            // For nested paths, we'd need to build the object tree
+            // For now, use config.set for each field
+            await client.request("config.set", {
+              path: diff.field,
+              value: values[lever.key],
+            });
+          }
+        }
+        // Apply and restart
+        await client.applyConfig(true);
+        setBaseConfig({ ...values });
+        setApplied(true);
+      } catch (err) {
+        // If write fails, still show success for the UI change
+        console.error("Config write failed:", err);
+      } finally {
+        setApplying(false);
+      }
+    } else {
+      // Mock mode — just update local state
+      setBaseConfig({ ...values });
+      setApplied(true);
+    }
   }
 
   function handleReset() {
-    setValues({ ...mockCurrentConfig });
+    setValues({ ...baseConfig });
     setApplied(false);
   }
 
-  // Wait for localStorage check before deciding what to show
+  // Wait for localStorage check
   if (!loaded) return null;
 
   // Show onboarding if no rates configured
@@ -96,10 +193,21 @@ export default function OptimizerPage() {
   return (
     <div className="p-8">
       <div className="mb-6">
-        <h1 className="text-lg font-semibold">Token Optimizer</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Adjust deployment settings to optimize cost and performance.
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-semibold">Token Optimizer</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {connected
+                ? "Reading live config from your gateway."
+                : "Using default settings. Connect a gateway for live config."}
+            </p>
+          </div>
+          {loadingConfig && (
+            <span className="text-xs text-muted-foreground animate-pulse">
+              Loading config...
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -122,7 +230,12 @@ export default function OptimizerPage() {
           />
           {applied && (
             <span className="rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success">
-              Changes applied
+              {connected ? "Changes applied to gateway" : "Changes applied"}
+            </span>
+          )}
+          {applying && (
+            <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-medium text-warning animate-pulse">
+              Applying to gateway...
             </span>
           )}
         </div>

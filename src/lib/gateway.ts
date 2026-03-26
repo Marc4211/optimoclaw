@@ -1,4 +1,5 @@
 import { GatewayConfig } from "@/types";
+import { GatewayClient } from "./gateway-client";
 
 const STORAGE_KEY = "broadclaw-gateway";
 
@@ -23,15 +24,12 @@ export function clearGatewayConfig(): void {
   localStorage.removeItem(STORAGE_KEY);
 }
 
-export async function testConnection(config: GatewayConfig): Promise<boolean> {
-  // TODO: Replace with real gateway health check
-  // For now, simulate a connection attempt
-  await new Promise((resolve) => setTimeout(resolve, 1200));
-
-  // Simulate: any non-empty URL and token "succeeds"
+export async function testConnection(config: GatewayConfig): Promise<GatewayClient> {
   if (!config.url || !config.token) {
     throw new Error("Gateway URL and token are required");
   }
 
-  return true;
+  const client = new GatewayClient(config.url, config.token);
+  await client.connect();
+  return client;
 }

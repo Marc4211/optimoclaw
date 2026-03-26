@@ -1,5 +1,5 @@
 export type ModelOption = "local-ollama" | "claude-haiku" | "claude-sonnet";
-export type FrequencyOption = "off" | "60min" | "30min" | "15min";
+export type FrequencyOption = "off" | "60m" | "30m" | "15m";
 
 export interface LeverValue {
   heartbeatModel: ModelOption;

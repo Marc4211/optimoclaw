@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { Bot, Plug } from "lucide-react";
-import { mockAgents } from "@/lib/mock-data";
 import { Agent } from "@/types";
 import { useGateway } from "@/contexts/GatewayContext";
 import EmptyState from "@/components/EmptyState";
@@ -20,7 +19,7 @@ function formatTokens(n: number): string {
 }
 
 export default function AgentsPage() {
-  const { connected } = useGateway();
+  const { connected, agents } = useGateway();
 
   if (!connected) {
     return (
@@ -42,18 +41,30 @@ export default function AgentsPage() {
     );
   }
 
+  if (agents.length === 0) {
+    return (
+      <EmptyState
+        icon={Bot}
+        title="Agents"
+        what="This page shows all agents running on your gateway."
+        why="Connected to gateway, but no agents found. Configure agents in your openclaw.json."
+      />
+    );
+  }
+
   return (
     <div className="p-8">
       <div className="mb-6">
         <h1 className="text-lg font-semibold">Agents</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Active agents on your connected gateway.
+          {agents.length} agent{agents.length !== 1 ? "s" : ""} on your
+          connected gateway.
         </p>
       </div>
 
       <div className="grid gap-3">
-        {mockAgents.map((agent) => {
-          const status = statusStyles[agent.status];
+        {agents.map((agent) => {
+          const status = statusStyles[agent.status] ?? statusStyles.offline;
           return (
             <div
               key={agent.id}
