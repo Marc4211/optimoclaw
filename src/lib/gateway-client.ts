@@ -116,6 +116,7 @@ export class GatewayClient {
             this.emitState("connected");
 
             // Extract agents from the hello-ok snapshot
+            console.log("hello-ok frame:", JSON.stringify(frame));
             const payload = frame.payload as Record<string, unknown> | undefined;
             const snapshot = payload?.snapshot as Record<string, unknown> | undefined;
             const snapshotAgents = (snapshot?.agents as unknown[]) ?? [];
