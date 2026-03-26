@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { LeverValue, ModelOption } from "@/types/optimizer";
+import { LeverValue, ModelOption, ContextLoadOption } from "@/types/optimizer";
 import { OpenClawConfig } from "@/types";
 import {
   levers,
@@ -9,6 +9,8 @@ import {
   presets,
   calculateCost,
   calculateDiff,
+  configHasLocalModel,
+  getFilteredOptions,
 } from "@/lib/optimizer";
 import { useRates } from "@/contexts/RatesContext";
 import { useGateway } from "@/contexts/GatewayContext";
@@ -26,8 +28,12 @@ function extractLeverValues(config: OpenClawConfig): LeverValue {
     heartbeatFrequency: mapFrequency(defaults?.heartbeat?.every) ?? mockCurrentConfig.heartbeatFrequency,
     defaultModel: (mapModel(defaults?.model?.primary) as "claude-haiku" | "claude-sonnet" | undefined) ?? mockCurrentConfig.defaultModel,
     compactionModel: (mapModel(defaults?.compaction?.model) as "local-ollama" | "claude-haiku" | undefined) ?? mockCurrentConfig.compactionModel,
-    compactionThreshold: mockCurrentConfig.compactionThreshold, // TTL doesn't map directly to token count
+    compactionThreshold: mockCurrentConfig.compactionThreshold,
     subagentConcurrency: defaults?.subagents?.maxConcurrent ?? mockCurrentConfig.subagentConcurrency,
+    sessionContextLoading: mapContextLoad((config as Record<string, unknown>)?.sessionContextLoading as string) ?? mockCurrentConfig.sessionContextLoading,
+    memoryFileScope: ((config as Record<string, unknown>)?.memoryFileScope as number) ?? mockCurrentConfig.memoryFileScope,
+    rateLimitDelay: ((config as Record<string, unknown>)?.rateLimitDelay as number) ?? mockCurrentConfig.rateLimitDelay,
+    searchBatchLimit: ((config as Record<string, unknown>)?.searchBatchLimit as number) ?? mockCurrentConfig.searchBatchLimit,
   };
 }
 
@@ -50,6 +56,15 @@ function mapFrequency(every?: string): "off" | "60m" | "30m" | "15m" | undefined
   return undefined;
 }
 
+function mapContextLoad(v?: string): ContextLoadOption | undefined {
+  if (!v) return undefined;
+  const lower = v.toLowerCase();
+  if (lower === "lean") return "lean";
+  if (lower === "standard") return "standard";
+  if (lower === "full") return "full";
+  return undefined;
+}
+
 export default function OptimizerPage() {
   const { hasRates, loaded, models } = useRates();
   const { client, connected, activeGateway } = useGateway();
@@ -59,6 +74,7 @@ export default function OptimizerPage() {
   const [applied, setApplied] = useState(false);
   const [applying, setApplying] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
+  const [hasLocalModel, setHasLocalModel] = useState(false);
 
   // Load real config from gateway when connected
   useEffect(() => {
@@ -74,6 +90,7 @@ export default function OptimizerPage() {
         const extracted = extractLeverValues(config);
         setBaseConfig(extracted);
         setValues(extracted);
+        setHasLocalModel(configHasLocalModel(config as Record<string, unknown>));
       })
       .catch(() => {
         // Fall back to mock config
@@ -147,13 +164,9 @@ export default function OptimizerPage() {
       setApplying(true);
       try {
         // Build the patch from diffs
-        const patch: Record<string, unknown> = {};
         for (const diff of diffs) {
-          // Set each changed field path
           const lever = levers.find((l) => l.configPath === diff.field);
           if (lever) {
-            // For nested paths, we'd need to build the object tree
-            // For now, use config.set for each field
             await client.request("config.set", {
               path: diff.field,
               value: values[lever.key],
@@ -165,7 +178,6 @@ export default function OptimizerPage() {
         setBaseConfig({ ...values });
         setApplied(true);
       } catch (err) {
-        // If write fails, still show success for the UI change
         console.error("Config write failed:", err);
       } finally {
         setApplying(false);
@@ -198,7 +210,7 @@ export default function OptimizerPage() {
             <h1 className="text-lg font-semibold">Token Optimizer</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {connected
-                ? "Reading live config from your gateway."
+                ? `Reading live config from ${activeGateway?.name ?? "your gateway"}.`
                 : "Using default settings. Connect a gateway for live config."}
             </p>
           </div>
@@ -230,12 +242,14 @@ export default function OptimizerPage() {
           />
           {applied && (
             <span className="rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success">
-              {connected ? "Changes applied to gateway" : "Changes applied"}
+              {connected
+                ? `Changes applied to ${activeGateway?.name ?? "gateway"}`
+                : "Changes applied"}
             </span>
           )}
           {applying && (
             <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-medium text-warning animate-pulse">
-              Applying to gateway...
+              Applying to {activeGateway?.name ?? "gateway"}...
             </span>
           )}
         </div>
@@ -247,6 +261,10 @@ export default function OptimizerPage() {
               lever={lever}
               value={values[lever.key]}
               costDelta={leverCostDeltas[lever.key]}
+              filteredOptions={getFilteredOptions(lever, hasLocalModel)}
+              showLocalModelHint={
+                lever.localModelGuarded && !hasLocalModel && connected
+              }
               onChange={handleChange}
             />
           ))}
