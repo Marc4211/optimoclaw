@@ -41,7 +41,7 @@ export interface DeviceAuthPayload {
   id: string;
   publicKey: string;
   signature: string; // base64
-  signedAt: string; // ISO 8601
+  signedAt: number; // milliseconds since epoch
   nonce: string;
 }
 
@@ -164,7 +164,7 @@ export function signChallenge(
     id: identity.id,
     publicKey: identity.publicKey,
     signature: encodeBase64(signature),
-    signedAt: new Date().toISOString(),
+    signedAt: Date.now(),
     nonce: params.nonce,
   };
 }

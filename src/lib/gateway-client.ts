@@ -116,15 +116,20 @@ export class GatewayClient {
             scopes: ["operator.read", "operator.write"],
           });
 
-          // Build connect params with device auth
+          // Build connect params matching OpenClaw v3 protocol
           const connectParams: Record<string, unknown> = {
-            token: this.token,
-            version: "1.0.0",
-            platform: "web",
-            deviceFamily: "broadclaw",
+            minProtocol: 3,
+            maxProtocol: 3,
+            client: {
+              id: "broadclaw",
+              version: "1.0.0",
+              platform: "web",
+              mode: "webchat",
+            },
             role: "operator",
             scopes: ["operator.read", "operator.write"],
             device: deviceAuth,
+            auth: { token: this.token },
           };
 
           // If we have a device token from a previous session, include it

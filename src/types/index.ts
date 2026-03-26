@@ -67,7 +67,7 @@ export interface DeviceAuthPayload {
   id: string;
   publicKey: string;
   signature: string;
-  signedAt: string;
+  signedAt: number;
   nonce: string;
 }
 
