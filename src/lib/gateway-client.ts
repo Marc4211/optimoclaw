@@ -32,6 +32,7 @@ export class GatewayClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private shouldReconnect = false;
   private _connected = false;
+  private _snapshot: Record<string, unknown> | null = null;
 
   constructor(url: string, token: string) {
     // Normalize URL: ensure ws:// or wss:// and /gateway path
@@ -115,9 +116,12 @@ export class GatewayClient {
             this.reconnectAttempt = 0;
             this.emitState("connected");
 
+            // Store the full snapshot for later use (config extraction, etc.)
+            const payload = frame.payload as Record<string, unknown> | undefined;
+            this._snapshot = (payload?.snapshot as Record<string, unknown>) ?? null;
+
             // Extract agents from hello-ok snapshot
             // Path: payload.snapshot.health.agents[]
-            const payload = frame.payload as Record<string, unknown> | undefined;
             const snapshot = payload?.snapshot as Record<string, unknown> | undefined;
             const health = snapshot?.health as Record<string, unknown> | undefined;
             const snapshotAgents = (health?.agents as unknown[]) ?? [];
@@ -221,10 +225,78 @@ export class GatewayClient {
     });
   }
 
+  // --- Snapshot access ---
+
+  get snapshot(): Record<string, unknown> | null {
+    return this._snapshot;
+  }
+
   // --- Typed convenience methods ---
 
   async getConfig(): Promise<OpenClawConfig> {
-    return this.request<OpenClawConfig>("config.get");
+    // Try the config.get API first
+    try {
+      return await this.request<OpenClawConfig>("config.get");
+    } catch {
+      // If scope not granted (e.g. "missing scope: operator.read"),
+      // fall back to extracting config hints from the connect snapshot.
+      // The snapshot contains agent defaults (heartbeat model/interval,
+      // session defaults, etc.) but not the full openclaw.json.
+      console.warn("[GatewayClient] config.get failed, extracting from snapshot");
+      return this.extractConfigFromSnapshot();
+    }
+  }
+
+  /**
+   * Build a partial OpenClawConfig from the hello-ok snapshot.
+   * This is the fallback when config.get requires a scope we don't have.
+   */
+  private extractConfigFromSnapshot(): OpenClawConfig {
+    if (!this._snapshot) return {};
+
+    const health = this._snapshot.health as Record<string, unknown> | undefined;
+    const agents = (health?.agents as Array<Record<string, unknown>>) ?? [];
+
+    // Find the default agent to extract heartbeat settings
+    const defaultAgent = agents.find((a) => a.isDefault) ?? agents[0];
+    const heartbeat = defaultAgent?.heartbeat as Record<string, unknown> | undefined;
+
+    // The snapshot gives us per-agent heartbeat config.
+    // We treat the default agent's settings as the "defaults".
+    const config: OpenClawConfig = {
+      agents: {
+        defaults: {
+          heartbeat: heartbeat
+            ? {
+                every: String(heartbeat.every ?? "30m"),
+                model: String(heartbeat.model ?? ""),
+                target: String(heartbeat.target ?? "none"),
+              }
+            : undefined,
+        },
+        list: agents.map((a) => {
+          const hb = a.heartbeat as Record<string, unknown> | undefined;
+          return {
+            name: String(a.agentId ?? ""),
+            model: String(hb?.model ?? ""),
+            heartbeat: hb
+              ? {
+                  every: String(hb.every ?? ""),
+                  model: String(hb.model ?? ""),
+                }
+              : undefined,
+          };
+        }),
+      },
+    };
+
+    // sessionDefaults from snapshot root
+    const sessionDefaults = this._snapshot.sessionDefaults as Record<string, unknown> | undefined;
+    if (sessionDefaults) {
+      (config as Record<string, unknown>).sessionDefaults = sessionDefaults;
+    }
+
+    return config;
   }
 
   async patchConfig(patch: Record<string, unknown>): Promise<unknown> {
