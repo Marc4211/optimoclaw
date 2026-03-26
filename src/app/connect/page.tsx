@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plug } from "lucide-react";
 import { useGateway } from "@/contexts/GatewayContext";
@@ -24,10 +24,11 @@ export default function ConnectPage() {
   }
 
   // Redirect on successful connection
-  if (connected) {
-    router.push("/agents");
-    return null;
-  }
+  useEffect(() => {
+    if (connected) {
+      router.push("/agents");
+    }
+  }, [connected, router]);
 
   return (
     <div className="flex h-full items-center justify-center p-8">
