@@ -7,13 +7,6 @@ import {
   ConnectResponse,
   OpenClawConfig,
 } from "@/types";
-import {
-  getOrCreateIdentity,
-  signChallenge,
-  saveDeviceToken,
-  getDeviceToken,
-  clearDeviceToken,
-} from "./device-identity";
 
 type EventHandler = (event: EventFrame) => void;
 type StateHandler = (state: "connecting" | "connected" | "disconnected") => void;
@@ -39,7 +32,6 @@ export class GatewayClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private shouldReconnect = false;
   private _connected = false;
-  private challengeNonce: string | null = null;
 
   constructor(url: string, token: string) {
     // Normalize URL: ensure ws:// or wss:// and /gateway path
@@ -89,61 +81,28 @@ export class GatewayClient {
           return;
         }
 
-        // Handle connect challenge — sign with Ed25519 device key
+        // Handle connect challenge — respond with token auth
         if (
           frame.type === "event" &&
           frame.event === "connect.challenge"
         ) {
-          const payload = frame.payload as { nonce?: string };
-          const nonce = payload?.nonce;
-          if (!nonce) {
-            settled = true;
-            reject(new Error("Gateway sent challenge without nonce"));
-            return;
-          }
-          this.challengeNonce = nonce;
-
-          // Load or create stable device identity
-          const identity = getOrCreateIdentity();
-
-          // Sign the v3 challenge payload
-          const deviceAuth = signChallenge(identity, {
-            nonce,
-            token: this.token,
-            platform: "web",
-            deviceFamily: "broadclaw",
-            role: "operator",
-            scopes: ["operator.read", "operator.write"],
-          });
-
-          // Build connect params matching OpenClaw v3 protocol
-          const connectParams: Record<string, unknown> = {
-            minProtocol: 3,
-            maxProtocol: 3,
-            client: {
-              id: "openclaw-control-ui",
-              version: "1.0.0",
-              platform: "web",
-              mode: "webchat",
-            },
-            role: "operator",
-            scopes: ["operator.read", "operator.write"],
-            device: deviceAuth,
-            auth: { token: this.token },
-          };
-
-          // If we have a device token from a previous session, include it
-          // so the gateway can skip the full pairing flow
-          const existingDeviceToken = getDeviceToken();
-          if (existingDeviceToken) {
-            connectParams.deviceToken = existingDeviceToken;
-          }
-
           this.sendRaw({
             type: "req",
             id: this.generateId(),
             method: "connect",
-            params: connectParams,
+            params: {
+              minProtocol: 3,
+              maxProtocol: 3,
+              client: {
+                id: "openclaw-control-ui",
+                version: "1.0.0",
+                platform: "web",
+                mode: "webchat",
+              },
+              role: "operator",
+              scopes: ["operator.read", "operator.write"],
+              auth: { token: this.token },
+            },
           });
           return;
         }
@@ -155,28 +114,10 @@ export class GatewayClient {
             this._connected = true;
             this.reconnectAttempt = 0;
             this.emitState("connected");
-
-            // Persist device token if the gateway issued one
-            const connectRes = frame.payload as ConnectResponse | undefined;
-            if (connectRes?.deviceToken) {
-              saveDeviceToken(connectRes.deviceToken);
-            }
-
             resolve();
           } else {
-            const errCode = frame.error?.code ?? "";
             const errMsg =
               frame.error?.message ?? "Connection rejected by gateway";
-
-            // Clear device token if auth failed — force re-pair next time
-            if (
-              errCode === "DEVICE_AUTH_NONCE_REQUIRED" ||
-              errCode === "DEVICE_AUTH_SIGNATURE_INVALID" ||
-              errCode === "DEVICE_TOKEN_EXPIRED"
-            ) {
-              clearDeviceToken();
-            }
-
             this._connected = false;
             this.shouldReconnect = false;
             reject(new Error(errMsg));
