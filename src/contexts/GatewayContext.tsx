@@ -50,6 +50,9 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
   const [gateways, setGateways] = useState<SavedGateway[]>([]);
   const [activeGateway, setActiveGateway] = useState<SavedGateway | null>(null);
   const clientRef = useRef<GatewayClient | null>(null);
+  // Track client instance in state so React re-renders when it changes
+  const [clientInstance, setClientInstance] = useState<GatewayClient | null>(null);
+  const [autoConnectDone, setAutoConnectDone] = useState(false);
 
   // Load saved gateways and active selection on mount (client-side only)
   useEffect(() => {
@@ -89,6 +92,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
           token: gateway.token,
         });
         clientRef.current = client;
+        setClientInstance(client);
 
         // Set agents from the connect snapshot
         if (snapshotAgents.length > 0) {
@@ -138,6 +142,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     if (clientRef.current) {
       clientRef.current.disconnect();
       clientRef.current = null;
+      setClientInstance(null);
     }
     // Don't remove the gateway from the list or clear active — just disconnect
     setAgents([]);
@@ -163,6 +168,19 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     setGateways(loadGateways());
   }, []);
 
+  // Auto-reconnect to the active gateway on page load
+  useEffect(() => {
+    if (!mounted || autoConnectDone) return;
+    setAutoConnectDone(true);
+
+    const active = loadActiveGateway();
+    if (active) {
+      connectToGateway(active).catch(() => {
+        // Auto-reconnect failed — user can manually reconnect
+      });
+    }
+  }, [mounted, autoConnectDone, connectToGateway]);
+
   const deleteGateway = useCallback(
     (id: string) => {
       // If deleting the active gateway, disconnect first
@@ -181,7 +199,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     <GatewayContext.Provider
       value={{
         ...state,
-        client: clientRef.current,
+        client: clientInstance,
         agents,
         gateways,
         activeGateway,

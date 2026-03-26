@@ -85,14 +85,23 @@ export default function OptimizerPage() {
 
     client
       .getConfig()
-      .then((config) => {
+      .then((rawResponse) => {
         if (cancelled) return;
+        // config.get may return { config: {...} } or the config directly
+        const config: OpenClawConfig =
+          (rawResponse as Record<string, unknown>)?.config
+            ? ((rawResponse as Record<string, unknown>).config as OpenClawConfig)
+            : rawResponse;
+
+        console.log("[Optimizer] Got config from gateway:", JSON.stringify(config).slice(0, 500));
         const extracted = extractLeverValues(config);
+        console.log("[Optimizer] Extracted lever values:", extracted);
         setBaseConfig(extracted);
         setValues(extracted);
         setHasLocalModel(configHasLocalModel(config as Record<string, unknown>));
       })
-      .catch(() => {
+      .catch((err) => {
+        console.error("[Optimizer] config.get failed:", err);
         // Fall back to mock config
       })
       .finally(() => {
