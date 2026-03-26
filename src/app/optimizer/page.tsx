@@ -7,10 +7,14 @@ import {
   levers,
   mockCurrentConfig,
   presets,
+  sections,
+  tuneModes,
+  TuneMode,
   calculateCost,
   calculateDiff,
   configHasLocalModel,
   getFilteredOptions,
+  formatCost,
 } from "@/lib/optimizer";
 import { useRates } from "@/contexts/RatesContext";
 import { useGateway } from "@/contexts/GatewayContext";
@@ -18,9 +22,11 @@ import LeverCard from "@/components/optimizer/LeverCard";
 import CostSummary from "@/components/optimizer/CostSummary";
 import PresetSelector from "@/components/optimizer/PresetSelector";
 import DiffPreview from "@/components/optimizer/DiffPreview";
+import { RolloutTarget } from "@/components/optimizer/DiffPreview";
 import RateSetupCard from "@/components/rates/RateSetupCard";
 
-// Extract lever values from real openclaw.json config
+// --- Config extraction helpers ---
+
 function extractLeverValues(config: OpenClawConfig): LeverValue {
   const defaults = config?.agents?.defaults;
   return {
@@ -40,7 +46,6 @@ function extractLeverValues(config: OpenClawConfig): LeverValue {
 function mapModel(model?: string): ModelOption | undefined {
   if (!model) return undefined;
   const lower = model.toLowerCase();
-  // Check ollama FIRST — "ollama/..." prefix or "local" anywhere
   if (lower.includes("ollama") || lower.startsWith("local")) return "local-ollama";
   if (lower.includes("haiku")) return "claude-haiku";
   if (lower.includes("sonnet")) return "claude-sonnet";
@@ -66,6 +71,8 @@ function mapContextLoad(v?: string): ContextLoadOption | undefined {
   return undefined;
 }
 
+// --- Page component ---
+
 export default function OptimizerPage() {
   const { hasRates, loaded, models, config: ratesConfig } = useRates();
   const { client, connected, activeGateway, agents } = useGateway();
@@ -76,8 +83,9 @@ export default function OptimizerPage() {
   const [applying, setApplying] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [hasLocalModel, setHasLocalModel] = useState(false);
+  const [tuneMode, setTuneMode] = useState<TuneMode | null>(null);
+  const [showTuneChooser, setShowTuneChooser] = useState(false);
 
-  // Real baseline from Admin API (if available)
   const realBaselineMonthly = ratesConfig?.realSpend?.monthlyEstimate ?? 0;
   const agentCount = connected && agents.length > 0 ? agents.length : 5;
 
@@ -92,18 +100,14 @@ export default function OptimizerPage() {
       .getConfig()
       .then((rawResponse) => {
         if (cancelled) return;
-        // config.get may return { config: {...} } or the config directly
         const config: OpenClawConfig =
           (rawResponse as Record<string, unknown>)?.config
             ? ((rawResponse as Record<string, unknown>).config as OpenClawConfig)
             : rawResponse;
 
-        console.log("[Optimizer] Got config from gateway:", JSON.stringify(config).slice(0, 500));
         const extracted = extractLeverValues(config);
-        console.log("[Optimizer] Extracted lever values:", extracted);
         setBaseConfig(extracted);
         setValues(extracted);
-        // Check both config and raw snapshot for ollama models
         setHasLocalModel(
           configHasLocalModel(
             config as Record<string, unknown>,
@@ -111,10 +115,7 @@ export default function OptimizerPage() {
           )
         );
       })
-      .catch((err) => {
-        console.error("[Optimizer] config.get failed:", err);
-        // Fall back to mock config
-      })
+      .catch(() => {})
       .finally(() => {
         if (!cancelled) setLoadingConfig(false);
       });
@@ -124,7 +125,7 @@ export default function OptimizerPage() {
     };
   }, [connected, client]);
 
-  // Cost options — anchored to real spend when available
+  // Cost calculation options — anchored to real spend when available
   const costOptions = useMemo(
     () =>
       realBaselineMonthly > 0
@@ -166,15 +167,13 @@ export default function OptimizerPage() {
     []
   );
 
+  // Per-lever cost deltas
   const leverCostDeltas = useMemo(() => {
     const rates = hasRates ? models : undefined;
     const deltas: Record<string, number> = {};
     for (const lever of levers) {
       const withOriginal = { ...baseConfig };
-      const withChanged = {
-        ...baseConfig,
-        [lever.key]: values[lever.key],
-      };
+      const withChanged = { ...baseConfig, [lever.key]: values[lever.key] };
       deltas[lever.key] =
         calculateCost(withChanged, rates, costOptions).total -
         calculateCost(withOriginal, rates, costOptions).total;
@@ -182,27 +181,58 @@ export default function OptimizerPage() {
     return deltas;
   }, [values, baseConfig, hasRates, models, costOptions]);
 
+  // Per-section summed cost deltas
+  const sectionCostDeltas = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const section of sections) {
+      let sum = 0;
+      for (const key of section.leverKeys) {
+        sum += leverCostDeltas[key] ?? 0;
+      }
+      result[section.id] = sum;
+    }
+    return result;
+  }, [leverCostDeltas]);
+
+  // Visible sections/levers based on tune mode
+  const visibleLeverKeys = useMemo(() => {
+    if (!tuneMode) return null;
+    return new Set(tuneModes[tuneMode].leverKeys);
+  }, [tuneMode]);
+
+  const visibleSections = useMemo(() => {
+    if (!visibleLeverKeys) return sections;
+    return sections
+      .map((s) => ({
+        ...s,
+        leverKeys: s.leverKeys.filter((k) => visibleLeverKeys.has(k)),
+      }))
+      .filter((s) => s.leverKeys.length > 0);
+  }, [visibleLeverKeys]);
+
   function handleApply() {
     setShowDiff(true);
   }
 
-  async function handleConfirm() {
+  async function handleConfirmWithRollout(rolloutTarget: RolloutTarget) {
     setShowDiff(false);
 
     if (connected && client) {
       setApplying(true);
       try {
-        // Build the patch from diffs
         for (const diff of diffs) {
           const lever = levers.find((l) => l.configPath === diff.field);
           if (lever) {
-            await client.request("config.set", {
+            const params: Record<string, unknown> = {
               path: diff.field,
               value: values[lever.key],
-            });
+            };
+            if (rolloutTarget.type === "single" && rolloutTarget.agentId) {
+              params.agentId = rolloutTarget.agentId;
+            }
+            await client.request("config.set", params);
           }
         }
-        // Apply and restart
         await client.applyConfig(true);
         setBaseConfig({ ...values });
         setApplied(true);
@@ -212,7 +242,6 @@ export default function OptimizerPage() {
         setApplying(false);
       }
     } else {
-      // Mock mode — just update local state
       setBaseConfig({ ...values });
       setApplied(true);
     }
@@ -223,16 +252,12 @@ export default function OptimizerPage() {
     setApplied(false);
   }
 
-  // Wait for localStorage check
   if (!loaded) return null;
-
-  // Show onboarding if no rates configured
-  if (!hasRates) {
-    return <RateSetupCard />;
-  }
+  if (!hasRates) return <RateSetupCard />;
 
   return (
     <div className="p-8">
+      {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
@@ -242,19 +267,63 @@ export default function OptimizerPage() {
                 ? `Reading live config from ${activeGateway?.name ?? "your gateway"}`
                 : "Using default settings. Connect a gateway for live config."}
               {realBaselineMonthly > 0 && (
-                <> · Anchored to ${realBaselineMonthly.toFixed(0)}/mo real spend</>
+                <> &middot; Anchored to ${realBaselineMonthly.toFixed(0)}/mo real spend</>
               )}
             </p>
           </div>
-          {loadingConfig && (
-            <span className="text-xs text-muted-foreground animate-pulse">
-              Loading config...
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {loadingConfig && (
+              <span className="text-xs text-muted-foreground animate-pulse">
+                Loading config...
+              </span>
+            )}
+            {/* Tune mode controls */}
+            {tuneMode === null ? (
+              <div className="relative">
+                <button
+                  onClick={() => setShowTuneChooser((p) => !p)}
+                  className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
+                >
+                  Help me tune this
+                </button>
+                {showTuneChooser && (
+                  <div className="absolute right-0 top-full z-10 mt-1 flex gap-1 rounded-lg border border-border bg-surface p-1.5 shadow-lg">
+                    {(Object.entries(tuneModes) as [TuneMode, typeof tuneModes.cost][]).map(
+                      ([mode, def]) => (
+                        <button
+                          key={mode}
+                          onClick={() => {
+                            setTuneMode(mode);
+                            setShowTuneChooser(false);
+                          }}
+                          className="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                        >
+                          {def.label}
+                        </button>
+                      )
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
+                  {tuneModes[tuneMode].label}
+                </span>
+                <button
+                  onClick={() => setTuneMode(null)}
+                  className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
+                >
+                  Show all
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       <div className="space-y-4">
+        {/* Cost summary */}
         <CostSummary
           currentCost={currentCost.total}
           projectedCost={projectedCost.total}
@@ -263,6 +332,7 @@ export default function OptimizerPage() {
           onReset={handleReset}
         />
 
+        {/* Presets + status */}
         <div className="flex items-center justify-between">
           <PresetSelector
             presets={presets}
@@ -286,28 +356,60 @@ export default function OptimizerPage() {
           )}
         </div>
 
-        <div className="grid gap-3">
-          {levers.map((lever) => (
-            <LeverCard
-              key={lever.key}
-              lever={lever}
-              value={values[lever.key]}
-              costDelta={leverCostDeltas[lever.key]}
-              filteredOptions={getFilteredOptions(lever, hasLocalModel)}
-              showLocalModelHint={
-                lever.localModelGuarded && !hasLocalModel && connected
-              }
-              onChange={handleChange}
-            />
-          ))}
+        {/* Section-grouped levers */}
+        <div className="space-y-6">
+          {visibleSections.map((section) => {
+            const sectionLevers = section.leverKeys
+              .map((key) => levers.find((l) => l.key === key)!)
+              .filter(Boolean);
+
+            return (
+              <div key={section.id}>
+                <div className="mb-3 flex items-center justify-between">
+                  <h2 className="text-sm font-semibold">{section.label}</h2>
+                  <span
+                    className={`font-mono text-xs font-medium ${
+                      sectionCostDeltas[section.id] < -0.01
+                        ? "text-success"
+                        : sectionCostDeltas[section.id] > 0.01
+                          ? "text-danger"
+                          : "text-muted-foreground"
+                    }`}
+                  >
+                    {sectionCostDeltas[section.id] > 0 ? "+" : ""}
+                    {formatCost(sectionCostDeltas[section.id])}/mo
+                  </span>
+                </div>
+                <div className="grid gap-3">
+                  {sectionLevers.map((lever) => (
+                    <LeverCard
+                      key={lever.key}
+                      lever={lever}
+                      value={values[lever.key]}
+                      costDelta={leverCostDeltas[lever.key]}
+                      filteredOptions={getFilteredOptions(lever, hasLocalModel)}
+                      rationale={
+                        tuneMode
+                          ? tuneModes[tuneMode].rationale[lever.key]
+                          : undefined
+                      }
+                      onChange={handleChange}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
+      {/* Apply modal */}
       {showDiff && (
         <DiffPreview
           diffs={diffs}
           gatewayName={activeGateway?.name}
-          onConfirm={handleConfirm}
+          agents={agents}
+          onConfirm={handleConfirmWithRollout}
           onCancel={() => setShowDiff(false)}
         />
       )}

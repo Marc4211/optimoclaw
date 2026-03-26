@@ -26,7 +26,7 @@ export const levers: LeverDefinition[] = [
       "Use a local or lightweight model almost always. Only bump this up if your heartbeat logic is complex or makes real judgment calls.",
     type: "select",
     options: [
-      { value: "local-ollama", label: "Local Ollama" },
+      { value: "local-ollama", label: "Local model (configured)" },
       { value: "claude-haiku", label: "Claude Haiku" },
       { value: "claude-sonnet", label: "Claude Sonnet" },
     ],
@@ -94,7 +94,7 @@ export const levers: LeverDefinition[] = [
       "A mid-tier model is usually the right call. Haiku or a local model works well for most setups.",
     type: "select",
     options: [
-      { value: "local-ollama", label: "Local Ollama" },
+      { value: "local-ollama", label: "Local model (configured)" },
       { value: "claude-haiku", label: "Claude Haiku" },
     ],
     configPath: "agents.defaults.compaction.model",
@@ -182,6 +182,78 @@ export const levers: LeverDefinition[] = [
     configPath: "agents.defaults.searchBatchLimit",
   },
 ];
+
+// --- Section groupings ---
+
+export type SectionId = "model-routing" | "frequency-volume" | "context-memory";
+
+export interface LeverSection {
+  id: SectionId;
+  label: string;
+  leverKeys: (keyof LeverValue)[];
+}
+
+export const sections: LeverSection[] = [
+  {
+    id: "model-routing",
+    label: "Model Routing",
+    leverKeys: ["defaultModel", "heartbeatModel", "compactionModel"],
+  },
+  {
+    id: "frequency-volume",
+    label: "Frequency & Volume",
+    leverKeys: ["heartbeatFrequency", "subagentConcurrency", "searchBatchLimit", "rateLimitDelay"],
+  },
+  {
+    id: "context-memory",
+    label: "Context & Memory",
+    leverKeys: ["sessionContextLoading", "memoryFileScope", "compactionThreshold"],
+  },
+];
+
+// --- "Help me tune this" modes ---
+
+export type TuneMode = "cost" | "quality" | "speed";
+
+export interface TuneModeDefinition {
+  label: string;
+  leverKeys: (keyof LeverValue)[];
+  rationale: Record<string, string>;
+}
+
+export const tuneModes: Record<TuneMode, TuneModeDefinition> = {
+  cost: {
+    label: "Reduce cost",
+    leverKeys: ["heartbeatModel", "compactionModel", "heartbeatFrequency", "sessionContextLoading", "memoryFileScope"],
+    rationale: {
+      heartbeatModel: "Heartbeats are the highest-frequency calls",
+      compactionModel: "Summaries don't need a strong model",
+      heartbeatFrequency: "Fewer beats = proportionally less spend",
+      sessionContextLoading: "Lean loading cuts input tokens 3–5x",
+      memoryFileScope: "Fewer days = fewer tokens loaded per session",
+    },
+  },
+  quality: {
+    label: "Improve quality",
+    leverKeys: ["defaultModel", "heartbeatModel", "compactionThreshold", "sessionContextLoading"],
+    rationale: {
+      defaultModel: "Stronger default model improves all tasks",
+      heartbeatModel: "Smarter heartbeats catch issues faster",
+      compactionThreshold: "Higher threshold preserves more context",
+      sessionContextLoading: "Full context gives agents better decisions",
+    },
+  },
+  speed: {
+    label: "Faster responses",
+    leverKeys: ["heartbeatFrequency", "subagentConcurrency", "rateLimitDelay", "searchBatchLimit"],
+    rationale: {
+      heartbeatFrequency: "More frequent check-ins = faster reaction",
+      subagentConcurrency: "More parallel agents = faster throughput",
+      rateLimitDelay: "Lower delay = faster sequential calls",
+      searchBatchLimit: "Larger batches = fewer pauses in research",
+    },
+  },
+};
 
 // --- Mock current config (simulates reading from gateway) ---
 
@@ -418,10 +490,10 @@ function calculateRawCost(
 // --- Diff calculation ---
 
 const DISPLAY_LABELS: Record<string, (v: string) => string> = {
-  heartbeatModel: (v) => ({ "local-ollama": "Local Ollama", "claude-haiku": "Claude Haiku", "claude-sonnet": "Claude Sonnet" }[v] ?? v),
+  heartbeatModel: (v) => ({ "local-ollama": "Local model (configured)", "claude-haiku": "Claude Haiku", "claude-sonnet": "Claude Sonnet" }[v] ?? v),
   heartbeatFrequency: (v) => ({ off: "Off", "60m": "Every 60 min", "30m": "Every 30 min", "15m": "Every 15 min" }[v] ?? v),
   defaultModel: (v) => ({ "claude-haiku": "Claude Haiku", "claude-sonnet": "Claude Sonnet" }[v] ?? v),
-  compactionModel: (v) => ({ "local-ollama": "Local Ollama", "claude-haiku": "Claude Haiku" }[v] ?? v),
+  compactionModel: (v) => ({ "local-ollama": "Local model (configured)", "claude-haiku": "Claude Haiku" }[v] ?? v),
   compactionThreshold: (v) => `${(Number(v) / 1000).toFixed(0)}k tokens`,
   subagentConcurrency: (v) => `${v} agent${Number(v) === 1 ? "" : "s"}`,
   sessionContextLoading: (v) => ({ lean: "Lean", standard: "Standard", full: "Full" }[v] ?? v),

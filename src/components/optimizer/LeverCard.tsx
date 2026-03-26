@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Lightbulb } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { LeverDefinition, LeverValue } from "@/types/optimizer";
 import { formatCost } from "@/lib/optimizer";
 
@@ -10,7 +10,7 @@ interface LeverCardProps {
   value: string | number;
   costDelta: number;
   filteredOptions?: { value: string; label: string }[];
-  showLocalModelHint?: boolean;
+  rationale?: string;
   onChange: (key: keyof LeverValue, value: string | number) => void;
 }
 
@@ -19,7 +19,7 @@ export default function LeverCard({
   value,
   costDelta,
   filteredOptions,
-  showLocalModelHint,
+  rationale,
   onChange,
 }: LeverCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -33,6 +33,11 @@ export default function LeverCard({
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             {lever.description}
           </p>
+          {rationale && (
+            <span className="mt-1.5 inline-block rounded-full bg-primary/10 px-2.5 py-0.5 text-xs text-primary">
+              {rationale}
+            </span>
+          )}
         </div>
         <div className="ml-4 flex flex-col items-end gap-1">
           <span
@@ -120,27 +125,6 @@ export default function LeverCard({
             onChange={(e) => onChange(lever.key, Number(e.target.value))}
             className="w-full accent-primary"
           />
-        </div>
-      )}
-
-      {/* Local model recommendation card */}
-      {showLocalModelHint && (
-        <div className="mt-3 flex items-start gap-2.5 rounded-md border border-primary/20 bg-primary/5 p-3">
-          <Lightbulb size={14} className="mt-0.5 shrink-0 text-primary" />
-          <p className="text-xs leading-relaxed text-muted-foreground">
-            <span className="font-medium text-foreground">Cut this cost to zero with a local model. </span>
-            Route this to a locally-running model and pay nothing per call.
-            Requires{" "}
-            <a
-              href="https://ollama.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline underline-offset-2"
-            >
-              Ollama
-            </a>{" "}
-            installed and a model pulled. Once configured in your OpenClaw config, this option will appear here automatically.
-          </p>
         </div>
       )}
     </div>
