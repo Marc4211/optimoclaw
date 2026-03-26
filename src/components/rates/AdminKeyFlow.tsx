@@ -1,11 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Shield, ExternalLink, AlertTriangle } from "lucide-react";
+import {
+  ArrowLeft,
+  Shield,
+  ExternalLink,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react";
 import {
   validateAdminKey,
-  summarizeByModel,
   looksLikeAdminKey,
+  formatTokens,
+  ParsedUsage,
+  ParsedCost,
 } from "@/lib/anthropic-usage";
 import { useRates } from "@/contexts/RatesContext";
 import { allDefaultRates } from "@/lib/rates";
@@ -26,10 +34,17 @@ export default function AdminKeyFlow({
   const [error, setError] = useState<string | null>(null);
   const [formatWarning, setFormatWarning] = useState(false);
 
+  // Show usage summary before confirming
+  const [usageResult, setUsageResult] = useState<{
+    usage: ParsedUsage;
+    cost: ParsedCost;
+    period: { start: string; end: string; days: number };
+  } | null>(null);
+
   function handleKeyChange(value: string) {
     setAdminKey(value);
     setError(null);
-    // Warn immediately if it doesn't look like an admin key
+    setUsageResult(null);
     setFormatWarning(value.length > 10 && !looksLikeAdminKey(value));
   }
 
@@ -41,34 +56,27 @@ export default function AdminKeyFlow({
     const result = await validateAdminKey(adminKey.trim());
 
     if (result.valid) {
-      // We got real usage data — build rates config from it
-      const summaries = summarizeByModel(result.report);
-
-      // Merge with default rates: use defaults as base, overlay any
-      // models we got data for so we know they're actually in use
-      const models = allDefaultRates.map((defaultRate) => {
-        const match = summaries.find((s) =>
-          s.model.toLowerCase().includes(defaultRate.model.replace("claude-", ""))
-        );
-        return {
-          ...defaultRate,
-          // Mark as active if we saw usage
-          ...(match ? { _hasUsage: true, _totalTokens: match.totalTokens } : {}),
-        };
+      setUsageResult({
+        usage: result.usage,
+        cost: result.cost,
+        period: result.period,
       });
-
-      const config: RatesConfig = {
-        source: "api-key",
-        provider: "anthropic",
-        models,
-        configuredAt: new Date().toISOString(),
-      };
-      setRates(config);
     } else {
       setError(result.error);
     }
 
     setValidating(false);
+  }
+
+  function handleConfirmRates() {
+    // Save rates config with api-key source
+    const config: RatesConfig = {
+      source: "api-key",
+      provider: "anthropic",
+      models: allDefaultRates.map((r) => ({ ...r })),
+      configuredAt: new Date().toISOString(),
+    };
+    setRates(config);
   }
 
   return (
@@ -98,8 +106,8 @@ export default function AdminKeyFlow({
             <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
               sk-ant-admin
             </code>{" "}
-            — they&apos;re different from standard API keys. Only organization admins
-            can create them.
+            — they&apos;re different from standard API keys. Only organization
+            admins can create them.
           </p>
         </div>
 
@@ -126,7 +134,8 @@ export default function AdminKeyFlow({
               3
             </span>
             <span className="text-muted-foreground">
-              Paste it below — BroadClaw will pull your last 7 days of usage
+              Paste it below — BroadClaw will pull your last 7 days of usage and
+              cost
             </span>
           </li>
         </ol>
@@ -194,13 +203,69 @@ export default function AdminKeyFlow({
           </div>
         )}
 
-        <button
-          onClick={handleConnect}
-          disabled={!adminKey.trim() || validating}
-          className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-        >
-          {validating ? "Pulling usage data..." : "Connect & Pull Usage"}
-        </button>
+        {/* Usage summary — shown after successful key validation */}
+        {usageResult && (
+          <div className="mt-5 rounded-lg border border-success/20 bg-success/5 p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-medium text-success">
+              <CheckCircle2 size={16} />
+              Connected — here&apos;s your last {usageResult.period.days} days
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              <div className="rounded-lg bg-surface p-3">
+                <p className="text-xs text-muted-foreground">Input tokens</p>
+                <p className="text-lg font-semibold">
+                  {formatTokens(usageResult.usage.input)}
+                </p>
+              </div>
+              <div className="rounded-lg bg-surface p-3">
+                <p className="text-xs text-muted-foreground">Output tokens</p>
+                <p className="text-lg font-semibold">
+                  {formatTokens(usageResult.usage.output)}
+                </p>
+              </div>
+              <div className="rounded-lg bg-surface p-3">
+                <p className="text-xs text-muted-foreground">Cached reads</p>
+                <p className="text-lg font-semibold">
+                  {formatTokens(usageResult.usage.cached)}
+                </p>
+              </div>
+              <div className="rounded-lg bg-surface p-3">
+                <p className="text-xs text-muted-foreground">Cost</p>
+                <p className="text-lg font-semibold">
+                  {usageResult.cost.totalUsd > 0
+                    ? `$${usageResult.cost.totalUsd.toFixed(2)}`
+                    : "—"}
+                </p>
+              </div>
+            </div>
+
+            {usageResult.usage.totalTokens > 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Total: {formatTokens(usageResult.usage.totalTokens)} tokens this
+                period
+              </p>
+            )}
+
+            <button
+              onClick={handleConfirmRates}
+              className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              Confirm &amp; Continue to Optimizer
+            </button>
+          </div>
+        )}
+
+        {/* Connect button — only show if no result yet */}
+        {!usageResult && (
+          <button
+            onClick={handleConnect}
+            disabled={!adminKey.trim() || validating}
+            className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+          >
+            {validating ? "Pulling usage data..." : "Connect & Pull Usage"}
+          </button>
+        )}
 
         <button
           onClick={onFallbackToManual}
