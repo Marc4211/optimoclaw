@@ -69,12 +69,25 @@ export default function AdminKeyFlow({
   }
 
   function handleConfirmRates() {
-    // Save rates config with api-key source
+    if (!usageResult) return;
+
+    // Calculate monthly estimate from real spend
+    const periodDays = usageResult.period.days || 7;
+    const monthlyEstimate =
+      usageResult.cost.totalUsd > 0
+        ? (usageResult.cost.totalUsd / periodDays) * 30
+        : 0;
+
     const config: RatesConfig = {
       source: "api-key",
       provider: "anthropic",
       models: allDefaultRates.map((r) => ({ ...r })),
       configuredAt: new Date().toISOString(),
+      realSpend: {
+        totalUsd: usageResult.cost.totalUsd,
+        periodDays,
+        monthlyEstimate,
+      },
     };
     setRates(config);
   }

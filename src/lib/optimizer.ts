@@ -257,14 +257,29 @@ export const presets: Preset[] = [
 // --- Local model detection ---
 
 /**
- * Check if the live gateway config contains a local/ollama model.
+ * Check if the live gateway config or snapshot contains a local/ollama model.
  * Used to gate the "Local Ollama" option — only show it if the user
  * has already configured one. Never offer it speculatively.
+ *
+ * Checks the full JSON string for any occurrence of "ollama" — this catches
+ * model strings like "ollama/llama3.2:3b" in any position in the config.
  */
-export function configHasLocalModel(configJson?: Record<string, unknown>): boolean {
-  if (!configJson) return false;
-  const json = JSON.stringify(configJson).toLowerCase();
-  return json.includes("ollama") || json.includes("local-ollama");
+export function configHasLocalModel(
+  configJson?: Record<string, unknown>,
+  snapshot?: Record<string, unknown>
+): boolean {
+  // Check the config itself
+  if (configJson) {
+    const json = JSON.stringify(configJson).toLowerCase();
+    if (json.includes("ollama") || json.includes("local-ollama")) return true;
+  }
+  // Also check the raw snapshot — the config extraction may not capture
+  // all model references (e.g. per-agent overrides, fallback models)
+  if (snapshot) {
+    const json = JSON.stringify(snapshot).toLowerCase();
+    if (json.includes("ollama")) return true;
+  }
+  return false;
 }
 
 /**
@@ -323,11 +338,47 @@ function getModelCost(
   return DEFAULT_MODEL_COSTS[modelKey];
 }
 
+/**
+ * Calculate relative cost for a lever configuration.
+ *
+ * When realBaselineMonthly is provided (from Admin API spend data),
+ * we anchor the calculation: the base config = realBaselineMonthly,
+ * and we compute deltas as proportional changes from that baseline.
+ *
+ * Without a baseline, we use the theoretical model.
+ */
 export function calculateCost(
   values: LeverValue,
-  customRates?: ModelRate[]
+  customRates?: ModelRate[],
+  options?: { agentCount?: number; realBaselineMonthly?: number; baseValues?: LeverValue }
 ): CostEstimate {
-  const agentCount = 5;
+  const agentCount = options?.agentCount ?? 5;
+  const rawCost = calculateRawCost(values, customRates, agentCount);
+
+  // If we have real baseline spend, anchor to it
+  if (options?.realBaselineMonthly && options?.baseValues) {
+    const baseCost = calculateRawCost(options.baseValues, customRates, agentCount);
+    if (baseCost.total > 0) {
+      // Scale: if raw model says base = $50 and real = $111,
+      // then scale factor = 111/50 = 2.22x
+      // projected config raw = $40 → projected real = $40 * 2.22 = $88.80
+      const scaleFactor = options.realBaselineMonthly / baseCost.total;
+      return {
+        monthlyInput: rawCost.monthlyInput * scaleFactor,
+        monthlyOutput: rawCost.monthlyOutput * scaleFactor,
+        total: rawCost.total * scaleFactor,
+      };
+    }
+  }
+
+  return rawCost;
+}
+
+function calculateRawCost(
+  values: LeverValue,
+  customRates: ModelRate[] | undefined,
+  agentCount: number
+): CostEstimate {
   let dailyInput = 0;
   let dailyOutput = 0;
 

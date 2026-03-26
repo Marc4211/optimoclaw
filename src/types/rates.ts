@@ -13,6 +13,12 @@ export interface RatesConfig {
   provider?: Provider;
   models: ModelRate[];
   configuredAt: string; // ISO timestamp
+  // Admin API spend data — present when source is "api-key"
+  realSpend?: {
+    totalUsd: number; // actual spend from cost report
+    periodDays: number; // how many days the spend covers
+    monthlyEstimate: number; // totalUsd / periodDays * 30
+  };
 }
 
 export interface ProviderInfo {

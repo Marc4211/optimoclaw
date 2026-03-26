@@ -40,16 +40,17 @@ function extractLeverValues(config: OpenClawConfig): LeverValue {
 function mapModel(model?: string): ModelOption | undefined {
   if (!model) return undefined;
   const lower = model.toLowerCase();
+  // Check ollama FIRST — "ollama/..." prefix or "local" anywhere
+  if (lower.includes("ollama") || lower.startsWith("local")) return "local-ollama";
   if (lower.includes("haiku")) return "claude-haiku";
   if (lower.includes("sonnet")) return "claude-sonnet";
-  if (lower.includes("ollama") || lower.includes("local")) return "local-ollama";
   return undefined;
 }
 
 function mapFrequency(every?: string): "off" | "60m" | "30m" | "15m" | undefined {
   if (!every) return undefined;
   const lower = every.toLowerCase();
-  if (lower === "off" || lower === "none" || lower === "0") return "off";
+  if (lower === "off" || lower === "none" || lower === "0" || lower === "disabled") return "off";
   if (lower === "15m" || lower === "15min") return "15m";
   if (lower === "30m" || lower === "30min") return "30m";
   if (lower === "60m" || lower === "1h" || lower === "60min") return "60m";
@@ -66,8 +67,8 @@ function mapContextLoad(v?: string): ContextLoadOption | undefined {
 }
 
 export default function OptimizerPage() {
-  const { hasRates, loaded, models } = useRates();
-  const { client, connected, activeGateway } = useGateway();
+  const { hasRates, loaded, models, config: ratesConfig } = useRates();
+  const { client, connected, activeGateway, agents } = useGateway();
   const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...mockCurrentConfig });
   const [values, setValues] = useState<LeverValue>({ ...mockCurrentConfig });
   const [showDiff, setShowDiff] = useState(false);
@@ -75,6 +76,10 @@ export default function OptimizerPage() {
   const [applying, setApplying] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [hasLocalModel, setHasLocalModel] = useState(false);
+
+  // Real baseline from Admin API (if available)
+  const realBaselineMonthly = ratesConfig?.realSpend?.monthlyEstimate ?? 0;
+  const agentCount = connected && agents.length > 0 ? agents.length : 5;
 
   // Load real config from gateway when connected
   useEffect(() => {
@@ -98,7 +103,13 @@ export default function OptimizerPage() {
         console.log("[Optimizer] Extracted lever values:", extracted);
         setBaseConfig(extracted);
         setValues(extracted);
-        setHasLocalModel(configHasLocalModel(config as Record<string, unknown>));
+        // Check both config and raw snapshot for ollama models
+        setHasLocalModel(
+          configHasLocalModel(
+            config as Record<string, unknown>,
+            client.snapshot ?? undefined
+          )
+        );
       })
       .catch((err) => {
         console.error("[Optimizer] config.get failed:", err);
@@ -113,13 +124,22 @@ export default function OptimizerPage() {
     };
   }, [connected, client]);
 
+  // Cost options — anchored to real spend when available
+  const costOptions = useMemo(
+    () =>
+      realBaselineMonthly > 0
+        ? { agentCount, realBaselineMonthly, baseValues: baseConfig }
+        : { agentCount },
+    [agentCount, realBaselineMonthly, baseConfig]
+  );
+
   const currentCost = useMemo(
-    () => calculateCost(baseConfig, hasRates ? models : undefined),
-    [baseConfig, hasRates, models]
+    () => calculateCost(baseConfig, hasRates ? models : undefined, costOptions),
+    [baseConfig, hasRates, models, costOptions]
   );
   const projectedCost = useMemo(
-    () => calculateCost(values, hasRates ? models : undefined),
-    [values, hasRates, models]
+    () => calculateCost(values, hasRates ? models : undefined, costOptions),
+    [values, hasRates, models, costOptions]
   );
 
   const diffs = useMemo(
@@ -156,11 +176,11 @@ export default function OptimizerPage() {
         [lever.key]: values[lever.key],
       };
       deltas[lever.key] =
-        calculateCost(withChanged, rates).total -
-        calculateCost(withOriginal, rates).total;
+        calculateCost(withChanged, rates, costOptions).total -
+        calculateCost(withOriginal, rates, costOptions).total;
     }
     return deltas;
-  }, [values, baseConfig, hasRates, models]);
+  }, [values, baseConfig, hasRates, models, costOptions]);
 
   function handleApply() {
     setShowDiff(true);
@@ -219,8 +239,11 @@ export default function OptimizerPage() {
             <h1 className="text-lg font-semibold">Token Optimizer</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               {connected
-                ? `Reading live config from ${activeGateway?.name ?? "your gateway"}.`
+                ? `Reading live config from ${activeGateway?.name ?? "your gateway"}`
                 : "Using default settings. Connect a gateway for live config."}
+              {realBaselineMonthly > 0 && (
+                <> · Anchored to ${realBaselineMonthly.toFixed(0)}/mo real spend</>
+              )}
             </p>
           </div>
           {loadingConfig && (
