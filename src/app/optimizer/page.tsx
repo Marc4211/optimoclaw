@@ -71,6 +71,29 @@ function mapContextLoad(v?: string): ContextLoadOption | undefined {
   return undefined;
 }
 
+// --- Lever value → real OpenClaw config value mapping ---
+
+/** Map BroadClaw internal lever values back to the actual config strings
+ *  the OpenClaw gateway expects. */
+function leverValueToConfig(key: string, value: string | number): string | number {
+  // Model keys → full Anthropic model identifiers
+  if (key === "defaultModel" || key === "heartbeatModel" || key === "compactionModel") {
+    const v = String(value);
+    if (v === "claude-sonnet") return "anthropic/claude-sonnet-4-20250514";
+    if (v === "claude-haiku") return "anthropic/claude-haiku-4-5-20251001";
+    if (v === "local-ollama") return "ollama/llama3.2:3b"; // preserve whatever was in config ideally
+    return v; // pass through unknown values
+  }
+  // Frequency — pass through as-is (e.g. "30m", "off", "disabled")
+  if (key === "heartbeatFrequency") {
+    const v = String(value);
+    if (v === "off") return "disabled";
+    return v;
+  }
+  // Numeric and other values — pass through
+  return value;
+}
+
 // --- Page component ---
 
 export default function OptimizerPage() {
@@ -250,24 +273,29 @@ export default function OptimizerPage() {
     if (connected && client) {
       setApplying(true);
       try {
+        // Build a single patch object with all changed config paths
+        const patch: Record<string, unknown> = {};
         for (const diff of diffs) {
           const lever = levers.find((l) => l.configPath === diff.field);
           if (lever) {
-            const params: Record<string, unknown> = {
-              path: diff.field,
-              value: values[lever.key],
-            };
-            if (rolloutTarget.type === "single" && rolloutTarget.agentId) {
-              params.agentId = rolloutTarget.agentId;
-            }
-            await client.request("config.set", params);
+            patch[diff.field] = leverValueToConfig(lever.key, values[lever.key]);
           }
         }
+
+        // If targeting a single agent, scope the patch to that agent
+        const params: Record<string, unknown> = { patch };
+        if (rolloutTarget.type === "single" && rolloutTarget.agentId) {
+          params.agentId = rolloutTarget.agentId;
+        }
+
+        await client.patchConfig(params);
         await client.applyConfig(true);
         setBaseConfig({ ...values });
         setApplied(true);
       } catch (err) {
-        console.error("Config write failed:", err);
+        console.error("Config patch+apply failed:", err);
+        // Surface error to user
+        alert(`Failed to apply changes: ${err instanceof Error ? err.message : "Unknown error"}`);
       } finally {
         setApplying(false);
       }

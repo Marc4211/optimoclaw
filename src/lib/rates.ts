@@ -44,6 +44,73 @@ export const allDefaultRates: ModelRate[] = [
 ];
 
 
+// --- Provider definitions ---
+
+import { ProviderInfo, Provider } from "@/types/rates";
+
+export const providers: ProviderInfo[] = [
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    dashboardUrl: "console.anthropic.com",
+    keyPageUrl: "https://console.anthropic.com/settings/admin-keys",
+    instructions: [
+      "Go to console.anthropic.com and sign in",
+      "Navigate to Settings → Admin API Keys",
+      "Create a new Admin key (not a standard API key)",
+      "Copy the key — you won't be able to see it again",
+    ],
+    scopeGuidance:
+      "Requires an Admin API key with billing read access. Standard API keys cannot access usage data.",
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    dashboardUrl: "platform.openai.com",
+    keyPageUrl: "https://platform.openai.com/api-keys",
+    instructions: [
+      "Go to platform.openai.com and sign in",
+      "Navigate to API Keys",
+      "Create a new secret key",
+      "Copy the key — you won't be able to see it again",
+    ],
+    scopeGuidance:
+      "Requires a key with billing and usage read permissions.",
+  },
+];
+
+export async function validateApiKey(
+  provider: Provider,
+  key: string
+): Promise<{ success: boolean; error?: string }> {
+  if (provider === "anthropic") {
+    try {
+      const res = await fetch("/api/anthropic-usage", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: key }),
+      });
+      if (res.ok) {
+        return { success: true };
+      }
+      const data = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        error: data.error ?? "This doesn't look like an Admin key — check your Console and try again.",
+      };
+    } catch {
+      return {
+        success: false,
+        error: "Failed to reach the Anthropic API. Check your network connection.",
+      };
+    }
+  }
+  return {
+    success: false,
+    error: "Billing API access is not yet available for this provider. Use manual rate entry instead.",
+  };
+}
+
 // --- localStorage helpers ---
 
 export function saveRatesConfig(config: RatesConfig): void {
