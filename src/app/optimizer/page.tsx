@@ -374,6 +374,10 @@ export default function OptimizerPage() {
       if (result.success) {
         setBaseConfig({ ...values });
         setApplied(true);
+        // Check if restart failed — config was saved but gateway needs manual restart
+        if (result.restart && !result.restart.ok) {
+          alert(`Config saved successfully, but gateway restart failed.\n\n${result.restart.error}\n\nIf your gateway is running in foreground (gateway run), you'll need to restart it manually.`);
+        }
       } else {
         const failedChanges = (result.results ?? [])
           .filter((r: { ok: boolean }) => !r.ok)
