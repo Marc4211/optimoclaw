@@ -20,6 +20,8 @@ export default function PresetSelector({
         <button
           key={preset.id}
           onClick={() => onSelect(preset)}
+          data-selected={String(activePresetId === preset.id)}
+          aria-pressed={activePresetId === preset.id}
           className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
             activePresetId === preset.id
               ? "bg-primary/15 text-primary ring-1 ring-primary/30"

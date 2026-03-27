@@ -70,6 +70,8 @@ export default function LeverCard({
             <button
               key={option.value}
               onClick={() => onChange(lever.key, option.value)}
+              data-selected={String(String(value) === option.value)}
+              aria-pressed={String(value) === option.value}
               className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                 String(value) === option.value
                   ? "bg-primary text-primary-foreground"
