@@ -86,6 +86,7 @@ function extractAgentLeverValues(
 
   const agent = agentEntry as Record<string, unknown>;
   const hb = agent.heartbeat as Record<string, unknown> | undefined;
+  console.log("[Optimizer] extractAgentLeverValues:", agentId, { model: agent.model, heartbeat: hb });
 
   const agentValues = { ...defaults };
 
