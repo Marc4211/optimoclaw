@@ -37,8 +37,12 @@ export async function POST(request: NextRequest) {
     const results: Array<{ key: string; value: string | number; ok: boolean; output?: string; error?: string }> = [];
 
     // Apply each config change via openclaw config set
+    // Single-quote the key to prevent shell glob expansion on bracket notation
+    // e.g. agents.list[0].model.primary → 'agents.list[0].model.primary'
     for (const { key, value } of changes) {
-      const cmd = `openclaw ${profileFlag} config set ${key} ${JSON.stringify(String(value))}`;
+      const quotedKey = `'${key}'`;
+      const quotedValue = `'${String(value)}'`;
+      const cmd = `openclaw ${profileFlag} config set ${quotedKey} ${quotedValue}`;
       try {
         const { stdout, stderr } = await execAsync(cmd, { timeout: 15000 });
         results.push({
@@ -63,6 +67,7 @@ export async function POST(request: NextRequest) {
     let restartResult: { ok: boolean; output?: string; error?: string } | null = null;
 
     if (restart && allOk) {
+      // Restart the gateway to pick up new config values
       const restartCmd = `openclaw ${profileFlag} gateway restart`;
       try {
         const { stdout, stderr } = await execAsync(restartCmd, { timeout: 30000 });
