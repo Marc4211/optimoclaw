@@ -344,48 +344,62 @@ export default function OptimizerPage() {
     setShowDiff(true);
   }
 
-  async function handleConfirmWithRollout(rolloutTarget: RolloutTarget) {
+  async function handleConfirmWithRollout(_rolloutTarget: RolloutTarget) {
     setShowDiff(false);
+    setApplying(true);
 
-    if (connected && client) {
-      setApplying(true);
-      try {
-        // Build a single patch object with all changed config paths
-        const patch: Record<string, unknown> = {};
-        for (const diff of diffs) {
-          const lever = levers.find((l) => l.configPath === diff.field);
-          if (lever) {
-            patch[diff.field] = leverValueToConfig(lever.key, values[lever.key]);
+    try {
+      // Build the list of config key/value changes for the CLI
+      const changes: Array<{ key: string; value: string | number }> = [];
+      for (const diff of diffs) {
+        const lever = levers.find((l) => l.configPath === diff.field);
+        if (lever) {
+          // If targeting a specific agent, rewrite the config path
+          let configKey = diff.field;
+          const agentId = selectedAgentId;
+          if (agentId) {
+            // agents.defaults.heartbeat.model → agents.[agentId].heartbeat.model
+            configKey = configKey.replace("agents.defaults.", `agents.${agentId}.`);
           }
+          changes.push({
+            key: configKey,
+            value: leverValueToConfig(lever.key, values[lever.key]),
+          });
         }
+      }
 
-        // Scope the patch: use selectedAgentId if set, otherwise respect rollout target
-        const params: Record<string, unknown> = { patch };
-        if (selectedAgentId) {
-          params.agentId = selectedAgentId;
-        } else if (rolloutTarget.type === "single" && rolloutTarget.agentId) {
-          params.agentId = rolloutTarget.agentId;
-        }
+      // Detect the openclaw profile from the gateway config path in snapshot
+      const configPath = (client?.snapshot?.configPath as string) ?? "";
+      let profile: string | undefined;
+      const profileMatch = configPath.match(/\.openclaw-([^/]+)\//);
+      if (profileMatch) {
+        profile = profileMatch[1];
+      }
 
-        await client.patchConfig(params);
-        await client.applyConfig(true);
+      // Call the API route which shells out to openclaw CLI
+      const res = await fetch("/api/config-apply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile, changes, restart: true }),
+      });
+
+      const result = await res.json();
+
+      if (result.success) {
         setBaseConfig({ ...values });
         setApplied(true);
-      } catch (err) {
-        console.error("Config patch+apply failed:", err);
-        // Surface error to user
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        if (msg.includes("missing scope")) {
-          alert(`Your gateway token doesn't have admin access. Config changes require operator.admin scope.\n\nTo fix: run "openclaw devices rotate" or "openclaw devices" in your terminal to provision a new token with admin scope, then reconnect BroadClaw with the new token.`);
-        } else {
-          alert(`Failed to apply changes: ${msg}`);
-        }
-      } finally {
-        setApplying(false);
+      } else {
+        const failedChanges = (result.results ?? [])
+          .filter((r: { ok: boolean }) => !r.ok)
+          .map((r: { key: string; error?: string }) => `${r.key}: ${r.error}`)
+          .join("\n");
+        alert(`Some config changes failed:\n${failedChanges}`);
       }
-    } else {
-      setBaseConfig({ ...values });
-      setApplied(true);
+    } catch (err) {
+      console.error("Config apply failed:", err);
+      alert(`Failed to apply changes: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setApplying(false);
     }
   }
 
