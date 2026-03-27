@@ -11,6 +11,7 @@ import {
   tuneModes,
   TuneMode,
   calculateCost,
+  calculateLeverCost,
   calculateDiff,
   configHasLocalModel,
   getFilteredOptions,
@@ -214,32 +215,46 @@ export default function OptimizerPage() {
     []
   );
 
-  // Per-lever cost deltas — always use rates (custom or built-in defaults)
+  // Per-lever absolute cost — what each lever costs at its current value
+  const leverAbsoluteCosts = useMemo(() => {
+    const rates = hasRates ? models : undefined;
+    const costs: Record<string, number> = {};
+    for (const lever of levers) {
+      costs[lever.key] = calculateLeverCost(lever.key, values, rates, costOptions);
+    }
+    return costs;
+  }, [values, hasRates, models, costOptions]);
+
+  // Per-lever cost deltas — change from base when user modifies a lever
   const leverCostDeltas = useMemo(() => {
     const rates = hasRates ? models : undefined;
     const deltas: Record<string, number> = {};
     for (const lever of levers) {
-      const withOriginal = { ...baseConfig };
-      const withChanged = { ...baseConfig, [lever.key]: values[lever.key] };
-      const origCost = calculateCost(withOriginal, rates, costOptions).total;
-      const changedCost = calculateCost(withChanged, rates, costOptions).total;
-      deltas[lever.key] = changedCost - origCost;
+      if (String(values[lever.key]) !== String(baseConfig[lever.key])) {
+        const withOriginal = { ...baseConfig };
+        const withChanged = { ...baseConfig, [lever.key]: values[lever.key] };
+        const origCost = calculateCost(withOriginal, rates, costOptions).total;
+        const changedCost = calculateCost(withChanged, rates, costOptions).total;
+        deltas[lever.key] = changedCost - origCost;
+      } else {
+        deltas[lever.key] = 0;
+      }
     }
     return deltas;
   }, [values, baseConfig, hasRates, models, costOptions]);
 
-  // Per-section summed cost deltas
-  const sectionCostDeltas = useMemo(() => {
+  // Per-section summed absolute costs
+  const sectionCosts = useMemo(() => {
     const result: Record<string, number> = {};
     for (const section of sections) {
       let sum = 0;
       for (const key of section.leverKeys) {
-        sum += leverCostDeltas[key] ?? 0;
+        sum += leverAbsoluteCosts[key] ?? 0;
       }
       result[section.id] = sum;
     }
     return result;
-  }, [leverCostDeltas]);
+  }, [leverAbsoluteCosts]);
 
   // Visible sections/levers based on tune mode
   const visibleLeverKeys = useMemo(() => {
@@ -423,17 +438,8 @@ export default function OptimizerPage() {
               <div key={section.id}>
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-sm font-semibold">{section.label}</h2>
-                  <span
-                    className={`font-mono text-xs font-medium ${
-                      sectionCostDeltas[section.id] < -0.01
-                        ? "text-success"
-                        : sectionCostDeltas[section.id] > 0.01
-                          ? "text-danger"
-                          : "text-muted-foreground"
-                    }`}
-                  >
-                    {sectionCostDeltas[section.id] > 0 ? "+" : ""}
-                    {formatCost(sectionCostDeltas[section.id])}/mo
+                  <span className="font-mono text-xs font-medium text-muted-foreground">
+                    {formatCost(sectionCosts[section.id])}/mo
                   </span>
                 </div>
                 <div className="grid gap-3">
@@ -442,6 +448,7 @@ export default function OptimizerPage() {
                       key={lever.key}
                       lever={lever}
                       value={values[lever.key]}
+                      absoluteCost={leverAbsoluteCosts[lever.key]}
                       costDelta={leverCostDeltas[lever.key]}
                       filteredOptions={getFilteredOptions(lever, hasLocalModel)}
                       rationale={

@@ -495,6 +495,48 @@ function calculateRawCost(
   };
 }
 
+/**
+ * Calculate the absolute monthly cost contribution of a single lever
+ * at its current value, isolating that lever's cost from the total.
+ *
+ * Method: compute total cost with the lever at its current value,
+ * then compute total cost with that lever "zeroed out" (cheapest option),
+ * and return the difference. This gives the marginal cost of that lever.
+ */
+export function calculateLeverCost(
+  leverKey: string,
+  values: LeverValue,
+  customRates?: ModelRate[],
+  options?: {
+    agentCount?: number;
+    realBaselineMonthly?: number;
+    baseValues?: LeverValue;
+    perModel?: Array<{ model: string; inputTokens: number; outputTokens: number; totalTokens: number }>;
+  }
+): number {
+  // "Zeroed" value for each lever type — the cheapest/lowest option
+  const zeroValues: Partial<LeverValue> = {
+    heartbeatModel: "local-ollama",
+    heartbeatFrequency: "off",
+    defaultModel: "claude-haiku",
+    compactionModel: "local-ollama",
+    compactionThreshold: 200000,
+    subagentConcurrency: 1,
+    sessionContextLoading: "lean",
+    memoryFileScope: 1,
+    rateLimitDelay: 0,
+    searchBatchLimit: 1,
+  };
+
+  const withLever = { ...values };
+  const withoutLever = { ...values, [leverKey]: zeroValues[leverKey as keyof LeverValue] ?? values[leverKey as keyof LeverValue] };
+
+  const costWith = calculateCost(withLever, customRates, options).total;
+  const costWithout = calculateCost(withoutLever, customRates, options).total;
+
+  return costWith - costWithout;
+}
+
 // --- Diff calculation ---
 
 const DISPLAY_LABELS: Record<string, (v: string) => string> = {

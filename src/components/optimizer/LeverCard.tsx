@@ -8,6 +8,9 @@ import { formatCost } from "@/lib/optimizer";
 interface LeverCardProps {
   lever: LeverDefinition;
   value: string | number;
+  /** Absolute monthly cost contribution of this lever at its current value */
+  absoluteCost: number;
+  /** Delta from base config — non-zero only when user has changed this lever */
   costDelta: number;
   filteredOptions?: { value: string; label: string }[];
   rationale?: string;
@@ -17,6 +20,7 @@ interface LeverCardProps {
 export default function LeverCard({
   lever,
   value,
+  absoluteCost,
   costDelta,
   filteredOptions,
   rationale,
@@ -24,6 +28,7 @@ export default function LeverCard({
 }: LeverCardProps) {
   const [expanded, setExpanded] = useState(false);
   const options = filteredOptions ?? lever.options;
+  const hasChanged = Math.abs(costDelta) > 0.01;
 
   return (
     <div className="rounded-lg border border-border bg-surface p-5">
@@ -40,18 +45,21 @@ export default function LeverCard({
           )}
         </div>
         <div className="ml-4 flex flex-col items-end gap-1">
-          <span
-            className={`font-mono text-sm font-medium ${
-              costDelta < -0.01
-                ? "text-success"
-                : costDelta > 0.01
-                  ? "text-danger"
-                  : "text-muted-foreground"
-            }`}
-          >
-            {costDelta > 0 ? "+" : ""}
-            {formatCost(costDelta)}/mo
+          {/* Always show absolute cost of this lever */}
+          <span className="font-mono text-sm font-medium text-foreground">
+            {formatCost(absoluteCost)}/mo
           </span>
+          {/* Show delta when user has changed this lever */}
+          {hasChanged && (
+            <span
+              className={`font-mono text-xs font-medium ${
+                costDelta < -0.01 ? "text-success" : "text-danger"
+              }`}
+            >
+              {costDelta > 0 ? "+" : ""}
+              {formatCost(costDelta)}
+            </span>
+          )}
           <button
             onClick={() => setExpanded((p) => !p)}
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
