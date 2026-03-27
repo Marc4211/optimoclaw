@@ -234,20 +234,10 @@ export class GatewayClient {
   // --- Typed convenience methods ---
 
   async getConfig(): Promise<OpenClawConfig> {
-    // Try the config.get API first — needs config.read or operator.read scope
-    try {
-      const result = await this.request<OpenClawConfig>("config.get", {});
-      console.log("[GatewayClient] config.get succeeded");
-      return result;
-    } catch (err) {
-      // If scope not granted (e.g. "missing scope: operator.read"),
-      // fall back to extracting config hints from the connect snapshot.
-      // The snapshot contains agent defaults (heartbeat model/interval,
-      // session defaults, etc.) but not the full openclaw.json.
-      console.warn("[GatewayClient] config.get failed:", err instanceof Error ? err.message : err);
-      console.log("[GatewayClient] Extracting config from snapshot instead");
-      return this.extractConfigFromSnapshot();
-    }
+    // The cli client ID doesn't get operator.read scope, so config.get
+    // is unavailable. Extract config directly from the connect snapshot
+    // which contains heartbeat settings, agent list, and session defaults.
+    return this.extractConfigFromSnapshot();
   }
 
   /**
