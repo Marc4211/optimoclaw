@@ -49,6 +49,7 @@ function mapModel(model?: string): ModelOption | undefined {
   if (lower.includes("ollama") || lower.startsWith("local")) return "local-ollama";
   if (lower.includes("haiku")) return "claude-haiku";
   if (lower.includes("sonnet")) return "claude-sonnet";
+  if (lower.includes("opus")) return "claude-opus";
   return undefined;
 }
 
@@ -81,7 +82,8 @@ function leverValueToConfig(key: string, value: string | number): string | numbe
     const v = String(value);
     if (v === "claude-sonnet") return "anthropic/claude-sonnet-4-20250514";
     if (v === "claude-haiku") return "anthropic/claude-haiku-4-5-20251001";
-    if (v === "local-ollama") return "ollama/llama3.2:3b"; // preserve whatever was in config ideally
+    if (v === "claude-opus") return "anthropic/claude-opus-4-20250514";
+    if (v === "local-ollama") return "ollama/llama3.2:3b";
     return v; // pass through unknown values
   }
   // Frequency — pass through as-is (e.g. "30m", "off", "disabled")

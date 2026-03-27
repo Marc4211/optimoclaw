@@ -29,6 +29,7 @@ export const levers: LeverDefinition[] = [
       { value: "local-ollama", label: "Local model (configured)" },
       { value: "claude-haiku", label: "Claude Haiku" },
       { value: "claude-sonnet", label: "Claude Sonnet" },
+      { value: "claude-opus", label: "Claude Opus" },
     ],
     configPath: "agents.defaults.heartbeat.model",
     localModelGuarded: true,
@@ -64,6 +65,7 @@ export const levers: LeverDefinition[] = [
     options: [
       { value: "claude-haiku", label: "Claude Haiku" },
       { value: "claude-sonnet", label: "Claude Sonnet" },
+      { value: "claude-opus", label: "Claude Opus" },
     ],
     configPath: "agents.defaults.model.primary",
   },
@@ -96,6 +98,8 @@ export const levers: LeverDefinition[] = [
     options: [
       { value: "local-ollama", label: "Local model (configured)" },
       { value: "claude-haiku", label: "Claude Haiku" },
+      { value: "claude-sonnet", label: "Claude Sonnet" },
+      { value: "claude-opus", label: "Claude Opus" },
     ],
     configPath: "agents.defaults.compaction.model",
     localModelGuarded: true,
@@ -375,6 +379,7 @@ const DEFAULT_MODEL_COSTS: Record<ModelOption, { input: number; output: number }
   "local-ollama": { input: 0, output: 0 },
   "claude-haiku": { input: 0.25, output: 1.25 },
   "claude-sonnet": { input: 3, output: 15 },
+  "claude-opus": { input: 15, output: 75 },
 };
 
 const FREQUENCY_MULTIPLIER: Record<FrequencyOption, number> = {

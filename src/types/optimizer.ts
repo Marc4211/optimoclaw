@@ -1,12 +1,12 @@
-export type ModelOption = "local-ollama" | "claude-haiku" | "claude-sonnet";
+export type ModelOption = "local-ollama" | "claude-haiku" | "claude-sonnet" | "claude-opus";
 export type FrequencyOption = "off" | "60m" | "30m" | "15m";
 export type ContextLoadOption = "lean" | "standard" | "full";
 
 export interface LeverValue {
   heartbeatModel: ModelOption;
   heartbeatFrequency: FrequencyOption;
-  defaultModel: "claude-haiku" | "claude-sonnet";
-  compactionModel: "local-ollama" | "claude-haiku";
+  defaultModel: "claude-haiku" | "claude-sonnet" | "claude-opus";
+  compactionModel: ModelOption;
   compactionThreshold: number; // 20000–200000
   subagentConcurrency: number; // 1–10
   sessionContextLoading: ContextLoadOption;
