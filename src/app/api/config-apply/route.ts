@@ -42,9 +42,9 @@ export async function POST(request: NextRequest) {
     for (const { key, value } of changes) {
       const quotedKey = `'${key}'`;
       const quotedValue = `'${String(value)}'`;
-      const cmd = `openclaw ${profileFlag} config set ${quotedKey} ${quotedValue}`;
+      const cmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config set ${quotedKey} ${quotedValue}`;
       try {
-        const { stdout, stderr } = await execAsync(cmd, { timeout: 15000 });
+        const { stdout, stderr } = await execAsync(cmd, { timeout: 15000, shell: "/bin/zsh" });
         results.push({
           key,
           value,
@@ -68,9 +68,9 @@ export async function POST(request: NextRequest) {
 
     if (restart && allOk) {
       // Restart the gateway to pick up new config values
-      const restartCmd = `openclaw ${profileFlag} gateway restart`;
+      const restartCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} gateway restart`;
       try {
-        const { stdout, stderr } = await execAsync(restartCmd, { timeout: 30000 });
+        const { stdout, stderr } = await execAsync(restartCmd, { timeout: 30000, shell: "/bin/zsh" });
         restartResult = { ok: true, output: (stdout || stderr).trim() };
       } catch (err) {
         const execErr = err as { stderr?: string; message?: string };
