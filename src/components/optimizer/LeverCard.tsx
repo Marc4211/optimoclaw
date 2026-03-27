@@ -28,7 +28,12 @@ export default function LeverCard({
   const hasChanged = isModelLever && Math.abs(costDelta) > 0.01;
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-5">
+    <div
+      className="rounded-lg border border-border bg-surface p-5"
+      data-lever={lever.key}
+      data-value={String(value)}
+      data-cost-delta={hasChanged ? costDelta.toFixed(2) : null}
+    >
       <div className="mb-3 flex items-start justify-between">
         <div className="flex-1">
           <h3 className="text-sm font-medium">{lever.label}</h3>

@@ -53,7 +53,7 @@ export default function AgentsPage() {
   }
 
   return (
-    <div className="p-8">
+    <div className="p-8" data-page="agents">
       <div className="mb-6">
         <h1 className="text-lg font-semibold">Agents</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -68,6 +68,11 @@ export default function AgentsPage() {
           return (
             <div
               key={agent.id}
+              data-agent-id={agent.id}
+              data-agent-name={agent.name}
+              data-agent-status={agent.status}
+              data-agent-model={agent.model}
+              data-agent-sessions={agent.sessionCount}
               className="flex items-center justify-between rounded-lg border border-border bg-surface p-4 transition-colors hover:bg-surface-hover"
             >
               <div className="flex items-center gap-3">

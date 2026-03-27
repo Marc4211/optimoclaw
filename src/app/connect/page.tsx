@@ -31,7 +31,7 @@ export default function ConnectPage() {
   }, [connected, router]);
 
   return (
-    <div className="flex h-full items-center justify-center p-8">
+    <div className="flex h-full items-center justify-center p-8" data-page="connect" data-connect-status={connected ? "connected" : error ? "error" : "disconnected"}>
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">

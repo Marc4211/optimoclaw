@@ -297,7 +297,7 @@ export default function OptimizerPage() {
   if (!hasRates) return <RateSetupCard />;
 
   return (
-    <div className="p-8">
+    <div className="p-8" data-page="optimizer">
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center justify-between">
@@ -406,12 +406,15 @@ export default function OptimizerPage() {
               .filter(Boolean);
 
             return (
-              <div key={section.id}>
+              <div key={section.id} data-section={section.id} data-section-cost={(() => {
+                if (section.id !== "model-routing") return null;
+                const d = section.leverKeys.reduce((sum, k) => sum + (leverCostDeltas[k] ?? 0), 0);
+                return Math.abs(d) < 0.01 ? null : d.toFixed(2);
+              })()}>
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-sm font-semibold">{section.label}</h2>
                   <span className="font-mono text-xs font-medium text-muted-foreground">
                     {(() => {
-                      // Only Model Routing section shows a cost rollup, and only when a model lever has changed
                       if (section.id !== "model-routing") return "—";
                       const sectionDelta = section.leverKeys.reduce((sum, k) => sum + (leverCostDeltas[k] ?? 0), 0);
                       if (Math.abs(sectionDelta) < 0.01) return "—";

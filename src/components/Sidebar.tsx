@@ -86,7 +86,12 @@ export default function Sidebar() {
       </nav>
 
       {/* Gateway switcher */}
-      <div className="relative border-t border-border p-3" ref={dropdownRef}>
+      <div
+        className="relative border-t border-border p-3"
+        ref={dropdownRef}
+        data-gateway-connected={String(connected)}
+        data-gateway-name={activeGateway?.name ?? ""}
+      >
         {hasGateways ? (
           <>
             {/* Active gateway button */}

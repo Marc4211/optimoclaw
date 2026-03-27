@@ -29,7 +29,12 @@ export default function CostSummary({
   const isDown = delta < -0.01;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-surface p-4">
+    <div
+      className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border bg-surface p-4"
+      data-actual={hasActual ? actualCost!.toFixed(2) : ""}
+      data-projected={projectedCost.toFixed(2)}
+      data-delta={hasChanges && hasActual ? delta.toFixed(2) : ""}
+    >
       <div className="flex flex-wrap items-center gap-6">
         {/* Actual — fixed, never moves with levers */}
         {hasActual && (
