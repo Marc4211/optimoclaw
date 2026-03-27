@@ -242,11 +242,9 @@ export default function OptimizerPage() {
           });
         }
 
+        // Set lastConfig — the re-extract useEffect will handle
+        // extracting the correct values based on selectedAgentId
         setLastConfig(config);
-        const extracted = extractLeverValues(config);
-        setBaseConfig(extracted);
-        setValues(extracted);
-        setInheritedLevers(new Set());
       })
       .catch((err) => {
         console.warn("[Optimizer] CLI config read failed, falling back to snapshot:", err);
@@ -258,10 +256,6 @@ export default function OptimizerPage() {
               ? ((rawResponse as Record<string, unknown>).config as OpenClawConfig)
               : rawResponse;
           setLastConfig(config);
-          const extracted = extractLeverValues(config);
-          setBaseConfig(extracted);
-          setValues(extracted);
-          setInheritedLevers(new Set());
         }).catch(() => {});
       })
       .finally(() => {
