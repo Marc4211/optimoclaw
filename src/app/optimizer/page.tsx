@@ -148,7 +148,12 @@ export default function OptimizerPage() {
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [tuneMode, setTuneMode] = useState<TuneMode | null>(null);
   const [showTuneChooser, setShowTuneChooser] = useState(false);
+  // Default to the default agent (isDefault: true from snapshot), not "Global defaults"
+  const defaultAgentId = agents.find((a) => a.id === (client?.snapshot?.sessionDefaults as Record<string, unknown>)?.defaultAgentId)?.id
+    ?? agents[0]?.id
+    ?? null;
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [agentInitialized, setAgentInitialized] = useState(false);
   const [inheritedLevers, setInheritedLevers] = useState<Set<string>>(new Set());
   const [lastConfig, setLastConfig] = useState<OpenClawConfig | null>(null);
 
@@ -158,6 +163,14 @@ export default function OptimizerPage() {
 
   // The actual baseline: from Admin API real spend data only
   const realBaselineMonthly = adminApiMonthly;
+
+  // Default the agent selector to the default agent once agents load
+  useEffect(() => {
+    if (!agentInitialized && defaultAgentId && agents.length > 0) {
+      setSelectedAgentId(defaultAgentId);
+      setAgentInitialized(true);
+    }
+  }, [agentInitialized, defaultAgentId, agents]);
 
   // Load real config from gateway when connected
   useEffect(() => {
@@ -362,6 +375,9 @@ export default function OptimizerPage() {
         profile = profileMatch[1];
       }
 
+      // Log exactly what we're sending
+      console.log("[Optimizer] Applying config changes:", { profile, changes });
+
       // Call the API route which shells out to openclaw CLI
       const res = await fetch("/api/config-apply", {
         method: "POST",
@@ -370,6 +386,7 @@ export default function OptimizerPage() {
       });
 
       const result = await res.json();
+      console.log("[Optimizer] Config apply result:", result);
 
       if (result.success) {
         setBaseConfig({ ...values });
