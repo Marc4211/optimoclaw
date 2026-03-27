@@ -24,6 +24,7 @@ import PresetSelector from "@/components/optimizer/PresetSelector";
 import AgentSelector from "@/components/optimizer/AgentSelector";
 import DiffPreview from "@/components/optimizer/DiffPreview";
 import { RolloutTarget } from "@/components/optimizer/DiffPreview";
+import StickyApplyBar from "@/components/optimizer/StickyApplyBar";
 import RateSetupCard from "@/components/rates/RateSetupCard";
 
 // --- Config extraction helpers ---
@@ -560,15 +561,13 @@ export default function OptimizerPage() {
         </div>
       </div>
 
-      <div className="space-y-4">
-        {/* Cost summary */}
+      {/* ─── Cost & Model Routing (moves the number) ─── */}
+      <div className="rounded-xl border border-border bg-surface/50 p-5 space-y-4">
         <CostSummary
           actualCost={realBaselineMonthly > 0 ? realBaselineMonthly : null}
           actualSource={adminApiMonthly > 0 ? "admin-api" : undefined}
           projectedCost={projectedCost.total}
           hasChanges={hasChanges}
-          onApply={handleApply}
-          onReset={handleReset}
         />
 
         {/* Agent scope selector */}
@@ -580,89 +579,124 @@ export default function OptimizerPage() {
           />
         )}
 
-        {/* Presets + status */}
+        {/* Model levers — these drive projected cost */}
+        <div data-section="model-routing">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold">Model Routing</h2>
+            <span className="font-mono text-xs font-medium text-muted-foreground">
+              {(() => {
+                const modelKeys = sections.find((s) => s.id === "model-routing")?.leverKeys ?? [];
+                const sectionDelta = modelKeys.reduce((sum, k) => sum + (leverCostDeltas[k] ?? 0), 0);
+                if (Math.abs(sectionDelta) < 0.01) return "—";
+                return `${sectionDelta > 0 ? "+" : ""}${formatCost(sectionDelta)}/mo`;
+              })()}
+            </span>
+          </div>
+          <div className="grid gap-3">
+            {(sections.find((s) => s.id === "model-routing")?.leverKeys ?? [])
+              .map((key) => levers.find((l) => l.key === key)!)
+              .filter(Boolean)
+              .map((lever) => (
+                <LeverCard
+                  key={lever.key}
+                  lever={lever}
+                  labelOverride={
+                    lever.key === "defaultModel" && selectedAgentId
+                      ? `${selectedAgentName}'s Model`
+                      : undefined
+                  }
+                  value={values[lever.key]}
+                  isModelLever={true}
+                  costDelta={leverCostDeltas[lever.key]}
+                  inherited={inheritedLevers.has(lever.key)}
+                  modelOptions={availableModels}
+                  filteredOptions={getFilteredOptions(lever)}
+                  rationale={
+                    tuneMode ? tuneModes[tuneMode].rationale[lever.key] : undefined
+                  }
+                  onChange={handleChange}
+                />
+              ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Performance Tuning (doesn't move the number) ─── */}
+      <div className="mt-6 space-y-6">
         <div className="flex items-center justify-between">
-          <PresetSelector
-            presets={presets}
-            activePresetId={activePresetId}
-            onSelect={(preset) => {
-              // Merge preset overrides over current values — preserves model selections
-              setValues((prev) => ({ ...prev, ...(presetOverrides[preset.id] ?? {}) }));
-              setApplied(false);
-            }}
-          />
-          {applied && (
-            <span className="rounded-full bg-success/10 px-3 py-1 text-xs font-medium text-success">
-              {connected
-                ? `Changes applied to ${activeGateway?.name ?? "gateway"}`
-                : "Changes applied"}
-            </span>
-          )}
-          {applying && (
-            <span className="rounded-full bg-warning/10 px-3 py-1 text-xs font-medium text-warning animate-pulse">
-              Applying to {activeGateway?.name ?? "gateway"}...
-            </span>
-          )}
+          <h2 className="text-base font-semibold">Performance Tuning</h2>
+          <div className="flex items-center gap-2">
+            <PresetSelector
+              presets={presets}
+              activePresetId={activePresetId}
+              onSelect={(preset) => {
+                setValues((prev) => ({ ...prev, ...(presetOverrides[preset.id] ?? {}) }));
+                setApplied(false);
+              }}
+            />
+          </div>
         </div>
 
-        {/* Section-grouped levers */}
-        <div className="space-y-6">
-          {visibleSections.map((section) => {
+        {/* Non-model sections */}
+        {sections
+          .filter((s) => s.id !== "model-routing")
+          .map((section) => {
             const sectionLevers = section.leverKeys
               .map((key) => levers.find((l) => l.key === key)!)
               .filter(Boolean);
 
+            // Filter by tune mode if active
+            const visible = tuneMode
+              ? sectionLevers.filter((l) => tuneModes[tuneMode].leverKeys.includes(l.key))
+              : sectionLevers;
+
+            if (visible.length === 0) return null;
+
             return (
-              <div key={section.id} data-section={section.id} data-section-cost={(() => {
-                if (section.id !== "model-routing") return null;
-                const d = section.leverKeys.reduce((sum, k) => sum + (leverCostDeltas[k] ?? 0), 0);
-                return Math.abs(d) < 0.01 ? null : d.toFixed(2);
-              })()}>
-                <div className="mb-3 flex items-center justify-between">
-                  <h2 className="text-sm font-semibold">{section.label}</h2>
-                  <span className="font-mono text-xs font-medium text-muted-foreground">
-                    {(() => {
-                      if (section.id !== "model-routing") return "—";
-                      const sectionDelta = section.leverKeys.reduce((sum, k) => sum + (leverCostDeltas[k] ?? 0), 0);
-                      if (Math.abs(sectionDelta) < 0.01) return "—";
-                      return `${sectionDelta > 0 ? "+" : ""}${formatCost(sectionDelta)}/mo`;
-                    })()}
-                  </span>
+              <div key={section.id} data-section={section.id}>
+                <div className="mb-3">
+                  <h3 className="text-sm font-semibold text-muted-foreground">{section.label}</h3>
                 </div>
                 <div className="grid gap-3">
-                  {sectionLevers.map((lever) => {
-                    // Override "Default Model" label when specific agent selected
-                    const labelOverride =
-                      lever.key === "defaultModel" && selectedAgentId
-                        ? `${selectedAgentName}'s Model`
-                        : undefined;
-
-                    return (
-                      <LeverCard
-                        key={lever.key}
-                        lever={lever}
-                        labelOverride={labelOverride}
-                        value={values[lever.key]}
-                        isModelLever={MODEL_LEVER_KEYS.has(lever.key)}
-                        costDelta={leverCostDeltas[lever.key]}
-                        inherited={inheritedLevers.has(lever.key)}
-                        modelOptions={MODEL_LEVER_KEYS.has(lever.key) ? availableModels : undefined}
-                        filteredOptions={getFilteredOptions(lever)}
-                        rationale={
-                          tuneMode
-                            ? tuneModes[tuneMode].rationale[lever.key]
-                            : undefined
-                        }
-                        onChange={handleChange}
-                      />
-                    );
-                  })}
+                  {visible.map((lever) => (
+                    <LeverCard
+                      key={lever.key}
+                      lever={lever}
+                      value={values[lever.key]}
+                      isModelLever={false}
+                      costDelta={0}
+                      inherited={inheritedLevers.has(lever.key)}
+                      filteredOptions={getFilteredOptions(lever)}
+                      rationale={
+                        tuneMode ? tuneModes[tuneMode].rationale[lever.key] : undefined
+                      }
+                      onChange={handleChange}
+                    />
+                  ))}
                 </div>
               </div>
             );
           })}
-        </div>
       </div>
+
+      {/* Spacer for sticky bar */}
+      {hasChanges && <div className="h-16" />}
+
+      {/* Sticky bottom bar — appears when changes are pending */}
+      <StickyApplyBar
+        changeCount={diffs.length}
+        applying={applying}
+        gatewayName={activeGateway?.name}
+        onApply={handleApply}
+        onReset={handleReset}
+      />
+
+      {/* Applied confirmation */}
+      {applied && !hasChanges && (
+        <div className="fixed bottom-4 right-4 z-30 rounded-lg bg-success/10 border border-success/20 px-4 py-2 text-sm font-medium text-success">
+          Changes applied to {activeGateway?.name ?? "gateway"}
+        </div>
+      )}
 
       {/* Apply modal */}
       {showDiff && (

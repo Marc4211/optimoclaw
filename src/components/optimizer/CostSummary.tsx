@@ -11,8 +11,6 @@ interface CostSummaryProps {
   /** Projected/estimated cost — updates as user changes levers */
   projectedCost: number;
   hasChanges: boolean;
-  onApply: () => void;
-  onReset: () => void;
 }
 
 export default function CostSummary({
@@ -20,8 +18,6 @@ export default function CostSummary({
   actualSource,
   projectedCost,
   hasChanges,
-  onApply,
-  onReset,
 }: CostSummaryProps) {
   const hasActual = actualCost !== null && actualCost > 0;
   const delta = hasChanges && hasActual ? projectedCost - actualCost : 0;
@@ -98,23 +94,7 @@ export default function CostSummary({
         )}
       </div>
 
-      <div className="flex items-center gap-2">
-        {hasChanges && (
-          <button
-            onClick={onReset}
-            className="rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
-          >
-            Reset
-          </button>
-        )}
-        <button
-          onClick={onApply}
-          disabled={!hasChanges}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-30"
-        >
-          Apply Changes
-        </button>
-      </div>
+      {/* Apply/Reset moved to sticky bottom bar */}
     </div>
   );
 }
