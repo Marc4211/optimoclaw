@@ -455,6 +455,21 @@ export default function OptimizerPage() {
         if (result.restart && !result.restart.ok) {
           alert(`Config saved successfully, but gateway restart failed.\n\n${result.restart.error}\n\nIf your gateway is running in foreground (gateway run), you'll need to restart it manually.`);
         }
+
+        // Re-read config from CLI after a short delay to confirm the write
+        // (the gateway needs a moment to restart and reload config)
+        setTimeout(async () => {
+          try {
+            const configPath = (client?.snapshot?.configPath as string) ?? "";
+            const pm = configPath.match(/\.openclaw-([^/]+)\//);
+            const p = pm ? pm[1] : "";
+            const r = await fetch(`/api/config-get?profile=${encodeURIComponent(p)}`);
+            const data = await r.json();
+            if (data.config) {
+              console.log("[Optimizer] Post-apply config re-read:", data.config);
+            }
+          } catch { /* non-critical */ }
+        }, 3000);
       } else {
         const failedChanges = (result.results ?? [])
           .filter((r: { ok: boolean }) => !r.ok)
