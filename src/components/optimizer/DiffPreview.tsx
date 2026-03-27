@@ -14,6 +14,9 @@ interface DiffPreviewProps {
   diffs: ConfigDiff[];
   gatewayName?: string;
   agents: Agent[];
+  /** If set, the optimizer is scoped to this agent — skip the all/single radio */
+  selectedAgentId?: string | null;
+  selectedAgentName?: string;
   onConfirm: (target: RolloutTarget) => void;
   onCancel: () => void;
 }
@@ -22,30 +25,41 @@ export default function DiffPreview({
   diffs,
   gatewayName,
   agents,
+  selectedAgentId,
+  selectedAgentName,
   onConfirm,
   onCancel,
 }: DiffPreviewProps) {
-  const [rolloutType, setRolloutType] = useState<"all" | "single">("all");
-  const [selectedAgentId, setSelectedAgentId] = useState<string>(
-    agents[0]?.id ?? ""
+  const isAgentScoped = !!selectedAgentId;
+
+  const [rolloutType, setRolloutType] = useState<"all" | "single">(
+    isAgentScoped ? "single" : "all"
+  );
+  const [rolloutAgentId, setRolloutAgentId] = useState<string>(
+    isAgentScoped ? selectedAgentId! : agents[0]?.id ?? ""
   );
 
-  const selectedAgentName =
-    agents.find((a) => a.id === selectedAgentId)?.name ?? selectedAgentId;
+  const rolloutAgentName =
+    agents.find((a) => a.id === rolloutAgentId)?.name ?? rolloutAgentId;
 
   function handleConfirm() {
-    onConfirm(
-      rolloutType === "all"
-        ? { type: "all" }
-        : { type: "single", agentId: selectedAgentId }
-    );
+    if (isAgentScoped) {
+      onConfirm({ type: "single", agentId: selectedAgentId! });
+    } else {
+      onConfirm(
+        rolloutType === "all"
+          ? { type: "all" }
+          : { type: "single", agentId: rolloutAgentId }
+      );
+    }
   }
 
-  const applyLabel =
-    rolloutType === "single"
-      ? `Apply to ${selectedAgentName}`
+  const applyLabel = isAgentScoped
+    ? `Apply to ${selectedAgentName}`
+    : rolloutType === "single"
+      ? `Apply to ${rolloutAgentName}`
       : gatewayName
-        ? `Apply to ${gatewayName} Gateway`
+        ? `Apply to ${gatewayName} Gateway (all agents)`
         : "Apply & Restart Gateway";
 
   return (
@@ -61,43 +75,54 @@ export default function DiffPreview({
           </button>
         </div>
 
-        {/* Rollout target */}
-        <div className="mb-4 space-y-2 rounded-lg bg-background p-3">
-          <p className="text-xs font-medium">Rollout target</p>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="radio"
-              name="rollout"
-              checked={rolloutType === "all"}
-              onChange={() => setRolloutType("all")}
-              className="accent-primary"
-            />
-            Apply to all agents
-          </label>
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="radio"
-              name="rollout"
-              checked={rolloutType === "single"}
-              onChange={() => setRolloutType("single")}
-              className="accent-primary"
-            />
-            Apply to one agent first
-          </label>
-          {rolloutType === "single" && agents.length > 0 && (
-            <select
-              value={selectedAgentId}
-              onChange={(e) => setSelectedAgentId(e.target.value)}
-              className="ml-6 rounded-md border border-border bg-surface px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              {agents.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+        {/* Rollout target — only show radio when Global defaults is selected */}
+        {!isAgentScoped && (
+          <div className="mb-4 space-y-2 rounded-lg bg-background p-3">
+            <p className="text-xs font-medium">Rollout target</p>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="rollout"
+                checked={rolloutType === "all"}
+                onChange={() => setRolloutType("all")}
+                className="accent-primary"
+              />
+              Apply to all agents
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="rollout"
+                checked={rolloutType === "single"}
+                onChange={() => setRolloutType("single")}
+                className="accent-primary"
+              />
+              Apply to one agent first
+            </label>
+            {rolloutType === "single" && agents.length > 0 && (
+              <select
+                value={rolloutAgentId}
+                onChange={(e) => setRolloutAgentId(e.target.value)}
+                className="ml-6 rounded-md border border-border bg-surface px-3 py-1.5 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                {agents.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
+
+        {/* Agent-scoped header */}
+        {isAgentScoped && (
+          <div className="mb-4 rounded-lg bg-background p-3">
+            <p className="text-sm">
+              Applying to <span className="font-medium">{selectedAgentName}</span>
+            </p>
+          </div>
+        )}
 
         <p className="mb-3 text-sm text-muted-foreground">
           The following config fields will be updated in openclaw.json:

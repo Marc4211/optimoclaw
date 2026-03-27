@@ -5,11 +5,15 @@ import { formatCost } from "@/lib/optimizer";
 
 interface LeverCardProps {
   lever: LeverDefinition;
+  /** Override the lever label (e.g. "[Agent]'s Model" instead of "Default Model") */
+  labelOverride?: string;
   value: string | number;
   /** Whether this is a model selection lever (gets cost display) */
   isModelLever: boolean;
   /** Delta from base config — only meaningful for model levers when changed */
   costDelta: number;
+  /** True when this lever value is inherited from global defaults (no per-agent override) */
+  inherited?: boolean;
   filteredOptions?: { value: string; label: string }[];
   rationale?: string;
   onChange: (key: keyof LeverValue, value: string | number) => void;
@@ -17,9 +21,11 @@ interface LeverCardProps {
 
 export default function LeverCard({
   lever,
+  labelOverride,
   value,
   isModelLever,
   costDelta,
+  inherited,
   filteredOptions,
   rationale,
   onChange,
@@ -36,7 +42,12 @@ export default function LeverCard({
     >
       <div className="mb-3 flex items-start justify-between">
         <div className="flex-1">
-          <h3 className="text-sm font-medium">{lever.label}</h3>
+          <h3 className="text-sm font-medium">
+            {labelOverride ?? lever.label}
+            {inherited && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground/60">(inherited)</span>
+            )}
+          </h3>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             {lever.description}
           </p>

@@ -21,6 +21,7 @@ import { useGateway } from "@/contexts/GatewayContext";
 import LeverCard from "@/components/optimizer/LeverCard";
 import CostSummary from "@/components/optimizer/CostSummary";
 import PresetSelector from "@/components/optimizer/PresetSelector";
+import AgentSelector from "@/components/optimizer/AgentSelector";
 import DiffPreview from "@/components/optimizer/DiffPreview";
 import { RolloutTarget } from "@/components/optimizer/DiffPreview";
 import RateSetupCard from "@/components/rates/RateSetupCard";
@@ -72,6 +73,61 @@ function mapContextLoad(v?: string): ContextLoadOption | undefined {
   return undefined;
 }
 
+/**
+ * Extract lever values for a specific agent, falling back to defaults.
+ * Returns { values, inherited } where inherited tracks which levers
+ * have no per-agent override (using the default value).
+ */
+function extractAgentLeverValues(
+  config: OpenClawConfig,
+  agentId: string
+): { values: LeverValue; inherited: Set<string> } {
+  const defaults = extractLeverValues(config);
+  const agentEntry = config?.agents?.list?.find((a) => a.name === agentId);
+  const inherited = new Set<string>();
+
+  if (!agentEntry) {
+    // No per-agent config — everything is inherited
+    for (const lever of levers) inherited.add(lever.key);
+    return { values: defaults, inherited };
+  }
+
+  const agent = agentEntry as Record<string, unknown>;
+  const hb = agent.heartbeat as Record<string, unknown> | undefined;
+
+  const agentValues = { ...defaults };
+
+  // Per-agent model
+  const agentModel = mapModel(agent.model as string | undefined);
+  if (agentModel) {
+    agentValues.defaultModel = agentModel as typeof agentValues.defaultModel;
+  } else {
+    inherited.add("defaultModel");
+  }
+
+  // Per-agent heartbeat
+  if (hb?.model) {
+    const m = mapModel(hb.model as string);
+    if (m) agentValues.heartbeatModel = m;
+  } else {
+    inherited.add("heartbeatModel");
+  }
+
+  if (hb?.every) {
+    const f = mapFrequency(hb.every as string);
+    if (f) agentValues.heartbeatFrequency = f;
+  } else {
+    inherited.add("heartbeatFrequency");
+  }
+
+  // Levers not typically overridden per-agent — mark as inherited
+  for (const key of ["compactionModel", "compactionThreshold", "subagentConcurrency", "sessionContextLoading", "memoryFileScope", "rateLimitDelay", "searchBatchLimit"]) {
+    if (!(key in agent)) inherited.add(key);
+  }
+
+  return { values: agentValues, inherited };
+}
+
 // --- Lever value → real OpenClaw config value mapping ---
 
 /** Map BroadClaw internal lever values back to the actual config strings
@@ -80,9 +136,9 @@ function leverValueToConfig(key: string, value: string | number): string | numbe
   // Model keys → full Anthropic model identifiers
   if (key === "defaultModel" || key === "heartbeatModel" || key === "compactionModel") {
     const v = String(value);
-    if (v === "claude-sonnet") return "anthropic/claude-sonnet-4-20250514";
+    if (v === "claude-sonnet") return "anthropic/claude-sonnet-4-6";
     if (v === "claude-haiku") return "anthropic/claude-haiku-4-5-20251001";
-    if (v === "claude-opus") return "anthropic/claude-opus-4-20250514";
+    if (v === "claude-opus") return "anthropic/claude-opus-4-6";
     if (v === "local-ollama") return "ollama/llama3.2:3b";
     return v; // pass through unknown values
   }
@@ -113,6 +169,9 @@ export default function OptimizerPage() {
   const [hasLocalModel, setHasLocalModel] = useState(false);
   const [tuneMode, setTuneMode] = useState<TuneMode | null>(null);
   const [showTuneChooser, setShowTuneChooser] = useState(false);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [inheritedLevers, setInheritedLevers] = useState<Set<string>>(new Set());
+  const [lastConfig, setLastConfig] = useState<OpenClawConfig | null>(null);
 
   const adminApiMonthly = ratesConfig?.realSpend?.monthlyEstimate ?? 0;
   const perModelUsage = ratesConfig?.realSpend?.perModel;
@@ -137,9 +196,11 @@ export default function OptimizerPage() {
             ? ((rawResponse as Record<string, unknown>).config as OpenClawConfig)
             : rawResponse;
 
+        setLastConfig(config);
         const extracted = extractLeverValues(config);
         setBaseConfig(extracted);
         setValues(extracted);
+        setInheritedLevers(new Set());
         setHasLocalModel(
           configHasLocalModel(
             config as Record<string, unknown>,
@@ -209,6 +270,37 @@ export default function OptimizerPage() {
     []
   );
 
+  // Handle agent selection change — re-extract config for the chosen agent
+  const handleAgentSelect = useCallback(
+    (agentId: string | null) => {
+      setSelectedAgentId(agentId);
+      setApplied(false);
+
+      if (!lastConfig) return;
+
+      if (agentId === null) {
+        // Global defaults
+        const extracted = extractLeverValues(lastConfig);
+        setBaseConfig(extracted);
+        setValues(extracted);
+        setInheritedLevers(new Set());
+      } else {
+        // Per-agent config
+        const { values: agentValues, inherited } = extractAgentLeverValues(lastConfig, agentId);
+        setBaseConfig(agentValues);
+        setValues(agentValues);
+        setInheritedLevers(inherited);
+      }
+    },
+    [lastConfig]
+  );
+
+  // Selected agent name for display
+  const selectedAgentName = useMemo(() => {
+    if (!selectedAgentId) return "Global defaults";
+    return agents.find((a) => a.id === selectedAgentId)?.name ?? selectedAgentId;
+  }, [selectedAgentId, agents]);
+
   // Per-lever cost deltas — only for model levers, only when changed from base.
   // Uses Admin API per-model spend × rate difference, not fabricated estimates.
   const leverCostDeltas = useMemo(() => {
@@ -267,9 +359,11 @@ export default function OptimizerPage() {
           }
         }
 
-        // If targeting a single agent, scope the patch to that agent
+        // Scope the patch: use selectedAgentId if set, otherwise respect rollout target
         const params: Record<string, unknown> = { patch };
-        if (rolloutTarget.type === "single" && rolloutTarget.agentId) {
+        if (selectedAgentId) {
+          params.agentId = selectedAgentId;
+        } else if (rolloutTarget.type === "single" && rolloutTarget.agentId) {
           params.agentId = rolloutTarget.agentId;
         }
 
@@ -280,7 +374,12 @@ export default function OptimizerPage() {
       } catch (err) {
         console.error("Config patch+apply failed:", err);
         // Surface error to user
-        alert(`Failed to apply changes: ${err instanceof Error ? err.message : "Unknown error"}`);
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        if (msg.includes("missing scope")) {
+          alert(`Permission denied: The gateway didn't grant the required scope. Try disconnecting and reconnecting from the sidebar, or check that your gateway token has admin access.`);
+        } else {
+          alert(`Failed to apply changes: ${msg}`);
+        }
       } finally {
         setApplying(false);
       }
@@ -376,6 +475,15 @@ export default function OptimizerPage() {
           onReset={handleReset}
         />
 
+        {/* Agent scope selector */}
+        {connected && agents.length > 0 && (
+          <AgentSelector
+            agents={agents}
+            selectedAgentId={selectedAgentId}
+            onSelect={handleAgentSelect}
+          />
+        )}
+
         {/* Presets + status */}
         <div className="flex items-center justify-between">
           <PresetSelector
@@ -425,22 +533,32 @@ export default function OptimizerPage() {
                   </span>
                 </div>
                 <div className="grid gap-3">
-                  {sectionLevers.map((lever) => (
-                    <LeverCard
-                      key={lever.key}
-                      lever={lever}
-                      value={values[lever.key]}
-                      isModelLever={MODEL_LEVER_KEYS.has(lever.key)}
-                      costDelta={leverCostDeltas[lever.key]}
-                      filteredOptions={getFilteredOptions(lever, hasLocalModel)}
-                      rationale={
-                        tuneMode
-                          ? tuneModes[tuneMode].rationale[lever.key]
-                          : undefined
-                      }
-                      onChange={handleChange}
-                    />
-                  ))}
+                  {sectionLevers.map((lever) => {
+                    // Override "Default Model" label when specific agent selected
+                    const labelOverride =
+                      lever.key === "defaultModel" && selectedAgentId
+                        ? `${selectedAgentName}'s Model`
+                        : undefined;
+
+                    return (
+                      <LeverCard
+                        key={lever.key}
+                        lever={lever}
+                        labelOverride={labelOverride}
+                        value={values[lever.key]}
+                        isModelLever={MODEL_LEVER_KEYS.has(lever.key)}
+                        costDelta={leverCostDeltas[lever.key]}
+                        inherited={inheritedLevers.has(lever.key)}
+                        filteredOptions={getFilteredOptions(lever, hasLocalModel)}
+                        rationale={
+                          tuneMode
+                            ? tuneModes[tuneMode].rationale[lever.key]
+                            : undefined
+                        }
+                        onChange={handleChange}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -454,6 +572,8 @@ export default function OptimizerPage() {
           diffs={diffs}
           gatewayName={activeGateway?.name}
           agents={agents}
+          selectedAgentId={selectedAgentId}
+          selectedAgentName={selectedAgentName}
           onConfirm={handleConfirmWithRollout}
           onCancel={() => setShowDiff(false)}
         />

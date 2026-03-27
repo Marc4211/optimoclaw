@@ -545,10 +545,10 @@ export function calculateLeverCost(
 // --- Diff calculation ---
 
 const DISPLAY_LABELS: Record<string, (v: string) => string> = {
-  heartbeatModel: (v) => ({ "local-ollama": "Local model (configured)", "claude-haiku": "Claude Haiku", "claude-sonnet": "Claude Sonnet" }[v] ?? v),
+  heartbeatModel: (v) => ({ "local-ollama": "Local model (configured)", "claude-haiku": "anthropic/claude-haiku-4-5-20251001", "claude-sonnet": "anthropic/claude-sonnet-4-6", "claude-opus": "anthropic/claude-opus-4-6" }[v] ?? v),
   heartbeatFrequency: (v) => ({ off: "Off", "60m": "Every 60 min", "30m": "Every 30 min", "15m": "Every 15 min" }[v] ?? v),
-  defaultModel: (v) => ({ "claude-haiku": "Claude Haiku", "claude-sonnet": "Claude Sonnet" }[v] ?? v),
-  compactionModel: (v) => ({ "local-ollama": "Local model (configured)", "claude-haiku": "Claude Haiku" }[v] ?? v),
+  defaultModel: (v) => ({ "claude-haiku": "anthropic/claude-haiku-4-5-20251001", "claude-sonnet": "anthropic/claude-sonnet-4-6", "claude-opus": "anthropic/claude-opus-4-6" }[v] ?? v),
+  compactionModel: (v) => ({ "local-ollama": "Local model (configured)", "claude-haiku": "anthropic/claude-haiku-4-5-20251001", "claude-sonnet": "anthropic/claude-sonnet-4-6", "claude-opus": "anthropic/claude-opus-4-6" }[v] ?? v),
   compactionThreshold: (v) => `${(Number(v) / 1000).toFixed(0)}k tokens`,
   subagentConcurrency: (v) => `${v} agent${Number(v) === 1 ? "" : "s"}`,
   sessionContextLoading: (v) => ({ lean: "Lean", standard: "Standard", full: "Full" }[v] ?? v),
