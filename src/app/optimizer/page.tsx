@@ -172,30 +172,90 @@ export default function OptimizerPage() {
     }
   }, [agentInitialized, defaultAgentId, agents]);
 
-  // Load real config from gateway when connected
+  // Load real config via CLI route (bypasses WebSocket scope restrictions)
   useEffect(() => {
     if (!connected || !client) return;
 
     let cancelled = false;
     setLoadingConfig(true);
 
-    client
-      .getConfig()
-      .then((rawResponse) => {
-        if (cancelled) return;
-        const config: OpenClawConfig =
-          (rawResponse as Record<string, unknown>)?.config
-            ? ((rawResponse as Record<string, unknown>).config as OpenClawConfig)
-            : rawResponse;
+    // Detect profile from snapshot configPath
+    const configPath = (client.snapshot?.configPath as string) ?? "";
+    const profileMatch = configPath.match(/\.openclaw-([^/]+)\//);
+    const profile = profileMatch ? profileMatch[1] : "";
+
+    fetch(`/api/config-get?profile=${encodeURIComponent(profile)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data.config) return;
+        const cfg = data.config as Record<string, string>;
+        console.log("[Optimizer] Config from CLI:", cfg);
+
+        // Build OpenClawConfig from the flat key-value pairs
+        const config: OpenClawConfig = {
+          agents: {
+            defaults: {
+              model: cfg["agents.defaults.model.primary"]
+                ? { primary: cfg["agents.defaults.model.primary"] }
+                : undefined,
+              heartbeat: {
+                every: cfg["agents.defaults.heartbeat.every"] ?? "30m",
+                model: cfg["agents.defaults.heartbeat.model"] ?? "",
+              },
+              compaction: {
+                model: cfg["agents.defaults.compaction.model"] ?? "",
+                threshold: cfg["agents.defaults.compaction.threshold"]
+                  ? Number(cfg["agents.defaults.compaction.threshold"])
+                  : undefined,
+              },
+              subagents: {
+                maxConcurrent: cfg["agents.defaults.subagents.maxConcurrent"]
+                  ? Number(cfg["agents.defaults.subagents.maxConcurrent"])
+                  : undefined,
+              },
+            },
+            list: [],
+          },
+        };
+
+        // Build agents list from per-agent keys
+        const agentKeys = Object.keys(cfg).filter((k) => k.startsWith("agents.list["));
+        const agentIndices = new Set(
+          agentKeys.map((k) => {
+            const m = k.match(/agents\.list\[(\d+)\]/);
+            return m ? Number(m[1]) : -1;
+          }).filter((i) => i >= 0)
+        );
+
+        for (const idx of Array.from(agentIndices).sort()) {
+          config.agents!.list!.push({
+            name: cfg[`agents.list[${idx}].name`] ?? `agent${idx}`,
+            model: cfg[`agents.list[${idx}].model.primary`] ?? "",
+          });
+        }
 
         setLastConfig(config);
         const extracted = extractLeverValues(config);
         setBaseConfig(extracted);
         setValues(extracted);
         setInheritedLevers(new Set());
-
       })
-      .catch(() => {})
+      .catch((err) => {
+        console.warn("[Optimizer] CLI config read failed, falling back to snapshot:", err);
+        // Fall back to snapshot extraction
+        client.getConfig().then((rawResponse) => {
+          if (cancelled) return;
+          const config: OpenClawConfig =
+            (rawResponse as Record<string, unknown>)?.config
+              ? ((rawResponse as Record<string, unknown>).config as OpenClawConfig)
+              : rawResponse;
+          setLastConfig(config);
+          const extracted = extractLeverValues(config);
+          setBaseConfig(extracted);
+          setValues(extracted);
+          setInheritedLevers(new Set());
+        }).catch(() => {});
+      })
       .finally(() => {
         if (!cancelled) setLoadingConfig(false);
       });

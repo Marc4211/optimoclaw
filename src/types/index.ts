@@ -110,7 +110,7 @@ export interface OpenClawConfig {
     defaults?: {
       model?: { primary?: string; fallbacks?: string[] };
       heartbeat?: { every?: string; model?: string; target?: string };
-      compaction?: { model?: string; mode?: string };
+      compaction?: { model?: string; mode?: string; threshold?: number };
       subagents?: { maxConcurrent?: number };
       blockStreamingDefault?: string;
     };
