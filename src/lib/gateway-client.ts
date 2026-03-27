@@ -101,7 +101,7 @@ export class GatewayClient {
                 mode: "webchat",
               },
               role: "operator",
-              scopes: ["config.read", "config.write"],
+              scopes: ["operator.read", "operator.write", "operator.admin"],
               auth: { token: this.token },
             },
           });
@@ -308,11 +308,47 @@ export class GatewayClient {
   // Admin API instead (via /api/anthropic-usage route).
 
   async patchConfig(patch: Record<string, unknown>): Promise<unknown> {
-    return this.request("config.patch", patch);
+    return this.requestWithScopeRetry("config.patch", patch);
   }
 
   async applyConfig(restart = true): Promise<unknown> {
-    return this.request("config.apply", { restart, timeout: 30000 });
+    return this.requestWithScopeRetry("config.apply", { restart, timeout: 30000 });
+  }
+
+  /**
+   * Attempt a request. If it fails with a missing-scope error,
+   * silently reconnect (which sends updated scopes) and retry once.
+   */
+  private async requestWithScopeRetry<T = unknown>(
+    method: string,
+    params: Record<string, unknown>
+  ): Promise<T> {
+    try {
+      return await this.request<T>(method, params);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.includes("missing scope")) {
+        console.log(`[GatewayClient] ${method} missing scope — reconnecting with updated scopes`);
+        await this.reconnectForScopes();
+        return await this.request<T>(method, params);
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Disconnect and reconnect to pick up new scopes.
+   * Preserves shouldReconnect so the reconnect loop doesn't fight us.
+   */
+  private async reconnectForScopes(): Promise<void> {
+    const wasReconnect = this.shouldReconnect;
+    this.shouldReconnect = false;
+    this._connected = false;
+    this.ws?.close();
+    this.ws = null;
+    this.rejectAllPending("Reconnecting for scopes");
+    this.shouldReconnect = wasReconnect;
+    await this.connect();
   }
 
   async subscribeSessions(): Promise<void> {
