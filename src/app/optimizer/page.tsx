@@ -266,6 +266,23 @@ export default function OptimizerPage() {
     };
   }, [connected, client]);
 
+  // Re-extract lever values when selectedAgentId or lastConfig changes
+  // This handles the case where config loads after agent is already selected
+  useEffect(() => {
+    if (!lastConfig) return;
+    if (selectedAgentId) {
+      const { values: agentValues, inherited } = extractAgentLeverValues(lastConfig, selectedAgentId);
+      setBaseConfig(agentValues);
+      setValues(agentValues);
+      setInheritedLevers(inherited);
+    } else {
+      const extracted = extractLeverValues(lastConfig);
+      setBaseConfig(extracted);
+      setValues(extracted);
+      setInheritedLevers(new Set());
+    }
+  }, [lastConfig, selectedAgentId]);
+
   // Cost calculation options — anchored to real spend when available
   const costOptions = useMemo(
     () =>
