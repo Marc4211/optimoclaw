@@ -5,10 +5,10 @@ import { promisify } from "util";
 const execAsync = promisify(exec);
 
 /**
- * GET /api/config-get?profile=digantic&key=agents.defaults.model.primary
+ * GET /api/config-get?profile=digantic&agentCount=7
  *
- * Reads a config value from OpenClaw via CLI.
- * If no key is provided, reads the full config as JSON.
+ * Reads optimizer-relevant config values from OpenClaw via CLI.
+ * Runs all reads in parallel to minimize startup overhead.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -16,8 +16,14 @@ export async function GET(request: NextRequest) {
     const key = request.nextUrl.searchParams.get("key") ?? "";
     const profileFlag = profile ? `--profile '${profile}'` : "";
 
-    // Read multiple keys we need for the optimizer in one shot
-    const keys = [
+    if (key) {
+      const cmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get '${key}'`;
+      const { stdout } = await execAsync(cmd, { timeout: 15000, shell: "/bin/zsh" });
+      return NextResponse.json({ key, value: extractValue(stdout) });
+    }
+
+    // Global config keys to read
+    const globalKeys = [
       "agents.defaults.model.primary",
       "agents.defaults.heartbeat.model",
       "agents.defaults.heartbeat.every",
@@ -26,48 +32,68 @@ export async function GET(request: NextRequest) {
       "agents.defaults.subagents.maxConcurrent",
     ];
 
-    if (key) {
-      // Single key read
-      const cmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get '${key}'`;
-      const { stdout } = await execAsync(cmd, { timeout: 15000, shell: "/bin/zsh" });
-      const value = extractValue(stdout);
-      return NextResponse.json({ key, value });
+    const agentCount = Number(request.nextUrl.searchParams.get("agentCount") ?? "7");
+
+    // Build all CLI commands and run them in PARALLEL
+    const tasks: Array<{ key: string; cmd: string; type: "value" | "json" }> = [];
+
+    // Global keys — each as a separate command for parallel exec
+    for (const k of globalKeys) {
+      tasks.push({
+        key: k,
+        cmd: `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get '${k}' 2>/dev/null`,
+        type: "value",
+      });
     }
 
-    // Read all optimizer-relevant keys
-    const config: Record<string, string> = {};
-    for (const k of keys) {
-      try {
-        const cmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get '${k}'`;
-        const { stdout } = await execAsync(cmd, { timeout: 15000, shell: "/bin/zsh" });
-        config[k] = extractValue(stdout);
-      } catch {
-        // Key doesn't exist — skip
-      }
-    }
-
-    // Read per-agent model overrides by fetching each agent object as JSON
-    const agentCount = Number(request.nextUrl.searchParams.get("agentCount") ?? "10");
+    // Per-agent objects — read full JSON objects
     for (let i = 0; i < agentCount; i++) {
-      try {
-        const agentCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${i}]' 2>/dev/null`;
-        const { stdout: agentOut } = await execAsync(agentCmd, { timeout: 10000, shell: "/bin/zsh" });
-        // The output contains JSON mixed with plugin logs — extract the JSON block
-        const jsonMatch = agentOut.match(/\{[\s\S]*\}/);
+      tasks.push({
+        key: `agent.${i}`,
+        cmd: `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${i}]' 2>/dev/null`,
+        type: "json",
+      });
+    }
+
+    // Execute ALL commands in parallel
+    const results = await Promise.allSettled(
+      tasks.map(async (task) => {
+        const { stdout } = await execAsync(task.cmd, { timeout: 15000, shell: "/bin/zsh" });
+        return { ...task, stdout };
+      })
+    );
+
+    const config: Record<string, string> = {};
+
+    for (const result of results) {
+      if (result.status !== "fulfilled") continue;
+      const { key, stdout, type } = result.value;
+
+      if (type === "value") {
+        const val = extractValue(stdout);
+        if (val && !val.includes("not found")) {
+          config[key] = val;
+        }
+      } else if (type === "json") {
+        // Extract JSON object from mixed output
+        const jsonMatch = stdout.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           try {
             const agent = JSON.parse(jsonMatch[0]);
-            const agentId = agent.id ?? agent.name ?? `agent${i}`;
-            config[`agents.list[${i}].name`] = agentId;
+            const idx = key.split(".")[1]; // "agent.0" → "0"
+            const agentId = agent.id ?? agent.name ?? `agent${idx}`;
+            config[`agents.list[${idx}].name`] = agentId;
             if (agent.model?.primary) {
-              config[`agents.list[${i}].model.primary`] = agent.model.primary;
+              config[`agents.list[${idx}].model.primary`] = agent.model.primary;
+            }
+            if (agent.heartbeat?.every) {
+              config[`agents.list[${idx}].heartbeat.every`] = agent.heartbeat.every;
+            }
+            if (agent.heartbeat?.model) {
+              config[`agents.list[${idx}].heartbeat.model`] = agent.heartbeat.model;
             }
           } catch { /* JSON parse failed */ }
-        } else {
-          break; // No JSON found — probably past the end of the list
         }
-      } catch {
-        break; // Index out of range or command failed
       }
     }
 
@@ -81,19 +107,16 @@ export async function GET(request: NextRequest) {
 /** Extract the actual value from openclaw CLI output (strip banners, plugin logs) */
 function extractValue(stdout: string): string {
   const lines = stdout.split("\n");
-  // The value is typically on a line by itself, after plugin loading messages
-  // Filter out known noise patterns
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    if (trimmed.startsWith("[")) continue;  // [plugins] lines
+    if (trimmed.startsWith("[")) continue;
     if (trimmed.includes("Plugin loaded")) continue;
     if (trimmed.includes("mycelium:")) continue;
     if (trimmed.includes("🦞")) continue;
     if (trimmed.includes("OpenClaw")) continue;
     if (trimmed.startsWith("│")) continue;
     if (trimmed.startsWith("◇")) continue;
-    // This should be the actual value
     return trimmed;
   }
   return stdout.trim();
