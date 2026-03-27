@@ -46,31 +46,28 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Read per-agent model overrides
-    // The agentCount query param tells us how many agents to check (from gateway snapshot)
+    // Read per-agent model overrides by fetching each agent object as JSON
     const agentCount = Number(request.nextUrl.searchParams.get("agentCount") ?? "10");
     for (let i = 0; i < agentCount; i++) {
-      // Read agent id (the config uses "id" not "name")
       try {
-        const idCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${i}].id'`;
-        const { stdout: idOut } = await execAsync(idCmd, { timeout: 10000, shell: "/bin/zsh" });
-        const agentId = extractValue(idOut);
-        if (agentId && !agentId.includes("Error") && !agentId.includes("not found") && !agentId.includes("undefined")) {
-          config[`agents.list[${i}].name`] = agentId; // Store as "name" for compatibility with the optimizer
-          // Read per-agent model override
+        const agentCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${i}]' 2>/dev/null`;
+        const { stdout: agentOut } = await execAsync(agentCmd, { timeout: 10000, shell: "/bin/zsh" });
+        // The output contains JSON mixed with plugin logs — extract the JSON block
+        const jsonMatch = agentOut.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
           try {
-            const mCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${i}].model.primary'`;
-            const { stdout: mOut } = await execAsync(mCmd, { timeout: 10000, shell: "/bin/zsh" });
-            const model = extractValue(mOut);
-            if (model && !model.includes("Error") && !model.includes("undefined")) {
-              config[`agents.list[${i}].model.primary`] = model;
+            const agent = JSON.parse(jsonMatch[0]);
+            const agentId = agent.id ?? agent.name ?? `agent${i}`;
+            config[`agents.list[${i}].name`] = agentId;
+            if (agent.model?.primary) {
+              config[`agents.list[${i}].model.primary`] = agent.model.primary;
             }
-          } catch { /* no per-agent model override */ }
+          } catch { /* JSON parse failed */ }
         } else {
-          break; // No more agents
+          break; // No JSON found — probably past the end of the list
         }
       } catch {
-        break; // Index out of range
+        break; // Index out of range or command failed
       }
     }
 
