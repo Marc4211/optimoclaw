@@ -50,13 +50,13 @@ export async function GET(request: NextRequest) {
     // The agentCount query param tells us how many agents to check (from gateway snapshot)
     const agentCount = Number(request.nextUrl.searchParams.get("agentCount") ?? "10");
     for (let i = 0; i < agentCount; i++) {
-      // Read agent name
+      // Read agent id (the config uses "id" not "name")
       try {
-        const nameCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${i}].name'`;
-        const { stdout: nameOut } = await execAsync(nameCmd, { timeout: 10000, shell: "/bin/zsh" });
-        const name = extractValue(nameOut);
-        if (name && !name.includes("Error") && !name.includes("undefined")) {
-          config[`agents.list[${i}].name`] = name;
+        const idCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${i}].id'`;
+        const { stdout: idOut } = await execAsync(idCmd, { timeout: 10000, shell: "/bin/zsh" });
+        const agentId = extractValue(idOut);
+        if (agentId && !agentId.includes("Error") && !agentId.includes("not found") && !agentId.includes("undefined")) {
+          config[`agents.list[${i}].name`] = agentId; // Store as "name" for compatibility with the optimizer
           // Read per-agent model override
           try {
             const mCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${i}].model.primary'`;
