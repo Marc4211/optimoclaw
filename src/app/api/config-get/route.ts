@@ -27,8 +27,8 @@ export async function GET(request: NextRequest) {
       "agents.defaults.model.primary",
       "agents.defaults.heartbeat.model",
       "agents.defaults.heartbeat.every",
-      "agents.defaults.compaction.model",
       "agents.defaults.compaction.threshold",
+      "plugins.entries.lossless-claw.config.summaryModel",
       "agents.defaults.subagents.maxConcurrent",
     ];
 

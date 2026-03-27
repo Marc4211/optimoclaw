@@ -85,7 +85,7 @@ export const levers: LeverDefinition[] = [
       "A mid-tier model is usually the right call. Haiku or a local model works well for most setups.",
     type: "select",
     // Options populated dynamically from gateway models.list
-    configPath: "agents.defaults.compaction.model",
+    configPath: "plugins.entries.lossless-claw.config.summaryModel",
   },
   {
     key: "subagentConcurrency",

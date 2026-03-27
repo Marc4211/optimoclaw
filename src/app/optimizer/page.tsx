@@ -205,7 +205,10 @@ export default function OptimizerPage() {
                 model: cfg["agents.defaults.heartbeat.model"] ?? "",
               },
               compaction: {
-                model: cfg["agents.defaults.compaction.model"] ?? "",
+                // Compaction model is a LosslessClaw plugin setting, not core config
+                // Falls back to agents.defaults.model.primary if not set
+                model: cfg["plugins.entries.lossless-claw.config.summaryModel"]
+                  ?? cfg["agents.defaults.model.primary"] ?? "",
                 threshold: cfg["agents.defaults.compaction.threshold"]
                   ? Number(cfg["agents.defaults.compaction.threshold"])
                   : undefined,
@@ -432,6 +435,7 @@ export default function OptimizerPage() {
             "agents.defaults.memoryFileScope",
             "agents.defaults.rateLimitDelay",
             "agents.defaults.searchBatchLimit",
+            "plugins.entries.lossless-claw.config.summaryModel",
           ]);
 
           if (agentId && !GLOBAL_ONLY_PATHS.has(configKey)) {
