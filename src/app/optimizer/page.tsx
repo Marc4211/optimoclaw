@@ -354,12 +354,24 @@ export default function OptimizerPage() {
       for (const diff of diffs) {
         const lever = levers.find((l) => l.configPath === diff.field);
         if (lever) {
-          // If targeting a specific agent, rewrite the config path
+          // If targeting a specific agent, rewrite the config path to agents.list[index].*
           let configKey = diff.field;
           const agentId = selectedAgentId;
           if (agentId) {
-            // agents.defaults.heartbeat.model → agents.[agentId].heartbeat.model
-            configKey = configKey.replace("agents.defaults.", `agents.${agentId}.`);
+            // Find the agent's index in the agents.list array from the snapshot
+            const snapshot = client?.snapshot;
+            const health = snapshot?.health as Record<string, unknown> | undefined;
+            const snapshotAgents = (health?.agents as Array<Record<string, unknown>>) ?? [];
+            const agentIndex = snapshotAgents.findIndex(
+              (a) => String(a.agentId) === agentId
+            );
+            if (agentIndex >= 0) {
+              // agents.defaults.heartbeat.model → agents.list[0].heartbeat.model
+              configKey = configKey.replace(
+                "agents.defaults.",
+                `agents.list[${agentIndex}].`
+              );
+            }
           }
           changes.push({
             key: configKey,
