@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next build && next start --port 3070",
+    "dev": "next build && next start -p 3070",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
