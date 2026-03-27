@@ -5,7 +5,7 @@ import { LeverValue, ModelOption, ContextLoadOption } from "@/types/optimizer";
 import { OpenClawConfig } from "@/types";
 import {
   levers,
-  mockCurrentConfig,
+  fallbackDefaults,
   presets,
   sections,
   tuneModes,
@@ -31,16 +31,16 @@ import RateSetupCard from "@/components/rates/RateSetupCard";
 function extractLeverValues(config: OpenClawConfig): LeverValue {
   const defaults = config?.agents?.defaults;
   return {
-    heartbeatModel: mapModel(defaults?.heartbeat?.model) ?? mockCurrentConfig.heartbeatModel,
-    heartbeatFrequency: mapFrequency(defaults?.heartbeat?.every) ?? mockCurrentConfig.heartbeatFrequency,
-    defaultModel: (mapModel(defaults?.model?.primary) as "claude-haiku" | "claude-sonnet" | undefined) ?? mockCurrentConfig.defaultModel,
-    compactionModel: (mapModel(defaults?.compaction?.model) as "local-ollama" | "claude-haiku" | undefined) ?? mockCurrentConfig.compactionModel,
-    compactionThreshold: mockCurrentConfig.compactionThreshold,
-    subagentConcurrency: defaults?.subagents?.maxConcurrent ?? mockCurrentConfig.subagentConcurrency,
-    sessionContextLoading: mapContextLoad((config as Record<string, unknown>)?.sessionContextLoading as string) ?? mockCurrentConfig.sessionContextLoading,
-    memoryFileScope: ((config as Record<string, unknown>)?.memoryFileScope as number) ?? mockCurrentConfig.memoryFileScope,
-    rateLimitDelay: ((config as Record<string, unknown>)?.rateLimitDelay as number) ?? mockCurrentConfig.rateLimitDelay,
-    searchBatchLimit: ((config as Record<string, unknown>)?.searchBatchLimit as number) ?? mockCurrentConfig.searchBatchLimit,
+    heartbeatModel: mapModel(defaults?.heartbeat?.model) ?? fallbackDefaults.heartbeatModel,
+    heartbeatFrequency: mapFrequency(defaults?.heartbeat?.every) ?? fallbackDefaults.heartbeatFrequency,
+    defaultModel: (mapModel(defaults?.model?.primary) as "claude-haiku" | "claude-sonnet" | undefined) ?? fallbackDefaults.defaultModel,
+    compactionModel: (mapModel(defaults?.compaction?.model) as "local-ollama" | "claude-haiku" | undefined) ?? fallbackDefaults.compactionModel,
+    compactionThreshold: fallbackDefaults.compactionThreshold,
+    subagentConcurrency: defaults?.subagents?.maxConcurrent ?? fallbackDefaults.subagentConcurrency,
+    sessionContextLoading: mapContextLoad((config as Record<string, unknown>)?.sessionContextLoading as string) ?? fallbackDefaults.sessionContextLoading,
+    memoryFileScope: ((config as Record<string, unknown>)?.memoryFileScope as number) ?? fallbackDefaults.memoryFileScope,
+    rateLimitDelay: ((config as Record<string, unknown>)?.rateLimitDelay as number) ?? fallbackDefaults.rateLimitDelay,
+    searchBatchLimit: ((config as Record<string, unknown>)?.searchBatchLimit as number) ?? fallbackDefaults.searchBatchLimit,
   };
 }
 
@@ -131,15 +131,16 @@ function extractAgentLeverValues(
 // --- Lever value → real OpenClaw config value mapping ---
 
 /** Map BroadClaw internal lever values back to the actual config strings
- *  the OpenClaw gateway expects. */
-function leverValueToConfig(key: string, value: string | number): string | number {
+ *  the OpenClaw gateway expects. ollamaModel is the original string from
+ *  the snapshot so we preserve whatever local model the user has configured. */
+function leverValueToConfig(key: string, value: string | number, ollamaModel?: string): string | number {
   // Model keys → full Anthropic model identifiers
   if (key === "defaultModel" || key === "heartbeatModel" || key === "compactionModel") {
     const v = String(value);
     if (v === "claude-sonnet") return "anthropic/claude-sonnet-4-6";
     if (v === "claude-haiku") return "anthropic/claude-haiku-4-5-20251001";
     if (v === "claude-opus") return "anthropic/claude-opus-4-6";
-    if (v === "local-ollama") return "ollama/llama3.2:3b";
+    if (v === "local-ollama") return ollamaModel ?? "ollama/llama3.2:3b";
     return v; // pass through unknown values
   }
   // Frequency — pass through as-is (e.g. "30m", "off", "disabled")
@@ -160,8 +161,8 @@ const MODEL_LEVER_KEYS = new Set(["defaultModel", "heartbeatModel", "compactionM
 export default function OptimizerPage() {
   const { hasRates, loaded, models, config: ratesConfig } = useRates();
   const { client, connected, activeGateway, agents } = useGateway();
-  const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...mockCurrentConfig });
-  const [values, setValues] = useState<LeverValue>({ ...mockCurrentConfig });
+  const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...fallbackDefaults });
+  const [values, setValues] = useState<LeverValue>({ ...fallbackDefaults });
   const [showDiff, setShowDiff] = useState(false);
   const [applied, setApplied] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -172,10 +173,12 @@ export default function OptimizerPage() {
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [inheritedLevers, setInheritedLevers] = useState<Set<string>>(new Set());
   const [lastConfig, setLastConfig] = useState<OpenClawConfig | null>(null);
+  // Store original ollama model string from snapshot so we write it back correctly
+  const [originalOllamaModel, setOriginalOllamaModel] = useState<string>("ollama/llama3.2:3b");
 
   const adminApiMonthly = ratesConfig?.realSpend?.monthlyEstimate ?? 0;
   const perModelUsage = ratesConfig?.realSpend?.perModel;
-  const agentCount = connected && agents.length > 0 ? agents.length : 5;
+  const agentCount = connected && agents.length > 0 ? agents.length : 1;
 
   // The actual baseline: from Admin API real spend data only
   const realBaselineMonthly = adminApiMonthly;
@@ -201,6 +204,20 @@ export default function OptimizerPage() {
         setBaseConfig(extracted);
         setValues(extracted);
         setInheritedLevers(new Set());
+
+        // Find the actual Ollama model string from the snapshot so we write it back correctly
+        const snapshot = client.snapshot;
+        const health = snapshot?.health as Record<string, unknown> | undefined;
+        const snapshotAgents = (health?.agents as Array<Record<string, unknown>>) ?? [];
+        for (const a of snapshotAgents) {
+          const hb = a.heartbeat as Record<string, unknown> | undefined;
+          const m = String(hb?.model ?? "");
+          if (m.toLowerCase().includes("ollama")) {
+            setOriginalOllamaModel(m);
+            break;
+          }
+        }
+
         setHasLocalModel(
           configHasLocalModel(
             config as Record<string, unknown>,
@@ -375,7 +392,7 @@ export default function OptimizerPage() {
           }
           changes.push({
             key: configKey,
-            value: leverValueToConfig(lever.key, values[lever.key]),
+            value: leverValueToConfig(lever.key, values[lever.key], originalOllamaModel),
           });
         }
       }

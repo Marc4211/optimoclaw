@@ -259,15 +259,17 @@ export const tuneModes: Record<TuneMode, TuneModeDefinition> = {
   },
 };
 
-// --- Mock current config (simulates reading from gateway) ---
+// --- Fallback defaults when gateway config is unavailable ---
+// These are conservative defaults, not assumptions about any specific setup.
+// They are only used when a lever value can't be read from the gateway snapshot.
 
-export const mockCurrentConfig: LeverValue = {
-  heartbeatModel: "claude-sonnet",
+export const fallbackDefaults: LeverValue = {
+  heartbeatModel: "claude-haiku",
   heartbeatFrequency: "30m",
-  defaultModel: "claude-sonnet",
+  defaultModel: "claude-haiku",
   compactionModel: "claude-haiku",
   compactionThreshold: 100000,
-  subagentConcurrency: 5,
+  subagentConcurrency: 2,
   sessionContextLoading: "standard",
   memoryFileScope: 7,
   rateLimitDelay: 5,
