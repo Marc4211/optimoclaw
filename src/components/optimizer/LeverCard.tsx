@@ -15,6 +15,9 @@ interface LeverCardProps {
   costDelta: number;
   /** True when this lever value is inherited from global defaults (no per-agent override) */
   inherited?: boolean;
+  /** Disable the lever with a message (e.g. plugin not installed) */
+  disabled?: boolean;
+  disabledMessage?: string;
   /** For model levers: dynamic model options from the gateway */
   modelOptions?: GatewayModel[];
   filteredOptions?: { value: string; label: string }[];
@@ -29,6 +32,8 @@ export default function LeverCard({
   isModelLever,
   costDelta,
   inherited,
+  disabled,
+  disabledMessage,
   modelOptions,
   filteredOptions,
   rationale,
@@ -38,13 +43,13 @@ export default function LeverCard({
   const hasChanged = isModelLever && Math.abs(costDelta) > 0.01;
 
   // For model levers with gateway models: use a dropdown
-  const useModelDropdown = isModelLever && modelOptions && modelOptions.length > 0;
+  const useModelDropdown = !disabled && isModelLever && modelOptions && modelOptions.length > 0;
 
   return (
     <div
-      className="rounded-lg border border-border bg-surface p-5"
+      className={`rounded-lg border border-border bg-surface p-5 ${disabled ? "opacity-50" : ""}`}
       data-lever={lever.key}
-      data-value={String(value)}
+      data-value={disabled ? "disabled" : String(value)}
       data-cost-delta={hasChanged ? costDelta.toFixed(2) : null}
     >
       <div className="mb-3 flex items-start justify-between">
@@ -82,8 +87,15 @@ export default function LeverCard({
         </div>
       </div>
 
+      {/* Disabled state — plugin not installed */}
+      {disabled && disabledMessage && (
+        <div className="rounded-md border border-border/50 bg-background px-3 py-2.5 text-sm text-muted-foreground">
+          {disabledMessage}
+        </div>
+      )}
+
       {/* Model lever: dropdown populated from gateway */}
-      {isModelLever && useModelDropdown && (
+      {!disabled && isModelLever && useModelDropdown && (
         <select
           value={String(value)}
           onChange={(e) => onChange(lever.key, e.target.value)}
@@ -100,7 +112,7 @@ export default function LeverCard({
         </select>
       )}
       {/* Model lever: loading state while models fetch */}
-      {isModelLever && !useModelDropdown && (
+      {!disabled && isModelLever && !useModelDropdown && (
         <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
           <span className="animate-pulse">Loading models...</span>
           <span className="font-mono text-xs">({String(value)})</span>

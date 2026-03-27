@@ -149,6 +149,7 @@ export default function OptimizerPage() {
   const [applying, setApplying] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [tuneMode, setTuneMode] = useState<TuneMode | null>(null);
+  const [hasLosslessClaw, setHasLosslessClaw] = useState(false);
   const [showTuneChooser, setShowTuneChooser] = useState(false);
   // Default to the default agent (isDefault: true from snapshot), not "Global defaults"
   const defaultAgentId = agents.find((a) => a.id === (client?.snapshot?.sessionDefaults as Record<string, unknown>)?.defaultAgentId)?.id
@@ -193,8 +194,13 @@ export default function OptimizerPage() {
         const cfg = data.config as Record<string, string>;
         console.log("[Optimizer] Config from CLI:", cfg);
 
+        // Check if LosslessClaw plugin is installed
+        const lcmEnabled = cfg["plugins.entries.lossless-claw.enabled"];
+        const hasLosslessClaw = lcmEnabled === "true" || !!cfg["plugins.entries.lossless-claw.config.summaryModel"];
+
         // Build OpenClawConfig from the flat key-value pairs
         const config: OpenClawConfig = {
+          _hasLosslessClaw: hasLosslessClaw,
           agents: {
             defaults: {
               model: cfg["agents.defaults.model.primary"]
@@ -248,6 +254,7 @@ export default function OptimizerPage() {
         // Set lastConfig — the re-extract useEffect will handle
         // extracting the correct values based on selectedAgentId
         setLastConfig(config);
+        setHasLosslessClaw(hasLosslessClaw);
       })
       .catch((err) => {
         console.warn("[Optimizer] CLI config read failed, falling back to snapshot:", err);
@@ -639,6 +646,12 @@ export default function OptimizerPage() {
                   isModelLever={true}
                   costDelta={leverCostDeltas[lever.key]}
                   inherited={inheritedLevers.has(lever.key)}
+                  disabled={lever.key === "compactionModel" && !hasLosslessClaw}
+                  disabledMessage={
+                    lever.key === "compactionModel" && !hasLosslessClaw
+                      ? "Requires LosslessClaw plugin for context compaction. Install it to control compaction costs and reduce token spend on long conversations."
+                      : undefined
+                  }
                   modelOptions={availableModels}
                   filteredOptions={getFilteredOptions(lever)}
                   rationale={
