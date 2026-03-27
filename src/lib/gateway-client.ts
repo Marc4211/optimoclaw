@@ -101,7 +101,7 @@ export class GatewayClient {
                 mode: "webchat",
               },
               role: "operator",
-              scopes: ["operator.read", "operator.write", "config.read", "config.write"],
+              scopes: ["config.read", "config.write"],
               auth: { token: this.token },
             },
           });
@@ -313,32 +313,9 @@ export class GatewayClient {
     return config;
   }
 
-  /**
-   * Fetch token usage stats from the gateway.
-   * Returns whatever the gateway provides — response shape is not yet documented,
-   * so we return the raw payload and let the caller parse it.
-   */
-  async getUsageStatus(): Promise<Record<string, unknown> | null> {
-    try {
-      return await this.request<Record<string, unknown>>("usage.status", {});
-    } catch (err) {
-      console.warn("[GatewayClient] usage.status failed:", err);
-      return null;
-    }
-  }
-
-  /**
-   * Fetch cost breakdown from the gateway.
-   * Returns whatever the gateway provides — response shape is not yet documented.
-   */
-  async getUsageCost(): Promise<Record<string, unknown> | null> {
-    try {
-      return await this.request<Record<string, unknown>>("usage.cost", {});
-    } catch (err) {
-      console.warn("[GatewayClient] usage.cost failed:", err);
-      return null;
-    }
-  }
+  // Note: usage.status and usage.cost require operator.read scope which
+  // the `cli` client ID doesn't get. Cost data comes from the Anthropic
+  // Admin API instead (via /api/anthropic-usage route).
 
   async patchConfig(patch: Record<string, unknown>): Promise<unknown> {
     return this.request("config.patch", patch);
