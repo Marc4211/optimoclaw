@@ -185,7 +185,7 @@ export default function OptimizerPage() {
     const profileMatch = configPath.match(/\.openclaw-([^/]+)\//);
     const profile = profileMatch ? profileMatch[1] : "";
 
-    fetch(`/api/config-get?profile=${encodeURIComponent(profile)}`)
+    fetch(`/api/config-get?profile=${encodeURIComponent(profile)}&agentCount=${agents.length}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled || !data.config) return;

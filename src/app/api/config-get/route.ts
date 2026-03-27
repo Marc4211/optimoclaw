@@ -46,29 +46,33 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Also read per-agent model overrides
-    // First get the agent count from the list
-    try {
-      const listCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list'`;
-      const { stdout: listOut } = await execAsync(listCmd, { timeout: 15000, shell: "/bin/zsh" });
-      // Try to parse as JSON array to get count
-      const listValue = extractValue(listOut);
+    // Read per-agent model overrides
+    // The agentCount query param tells us how many agents to check (from gateway snapshot)
+    const agentCount = Number(request.nextUrl.searchParams.get("agentCount") ?? "10");
+    for (let i = 0; i < agentCount; i++) {
+      // Read agent name
       try {
-        const agents = JSON.parse(listValue);
-        if (Array.isArray(agents)) {
-          for (let i = 0; i < agents.length; i++) {
-            const agentName = agents[i]?.name ?? agents[i]?.agentId ?? `agent${i}`;
-            config[`agents.list[${i}].name`] = agentName;
-            // Read per-agent model
-            try {
-              const mCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${i}].model.primary'`;
-              const { stdout: mOut } = await execAsync(mCmd, { timeout: 10000, shell: "/bin/zsh" });
-              config[`agents.list[${i}].model.primary`] = extractValue(mOut);
-            } catch { /* no per-agent override */ }
-          }
+        const nameCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${i}].name'`;
+        const { stdout: nameOut } = await execAsync(nameCmd, { timeout: 10000, shell: "/bin/zsh" });
+        const name = extractValue(nameOut);
+        if (name && !name.includes("Error") && !name.includes("undefined")) {
+          config[`agents.list[${i}].name`] = name;
+          // Read per-agent model override
+          try {
+            const mCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${i}].model.primary'`;
+            const { stdout: mOut } = await execAsync(mCmd, { timeout: 10000, shell: "/bin/zsh" });
+            const model = extractValue(mOut);
+            if (model && !model.includes("Error") && !model.includes("undefined")) {
+              config[`agents.list[${i}].model.primary`] = model;
+            }
+          } catch { /* no per-agent model override */ }
+        } else {
+          break; // No more agents
         }
-      } catch { /* not JSON */ }
-    } catch { /* agents.list not readable */ }
+      } catch {
+        break; // Index out of range
+      }
+    }
 
     return NextResponse.json({ config });
   } catch (err) {
