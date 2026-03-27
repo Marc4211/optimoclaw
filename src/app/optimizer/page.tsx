@@ -229,9 +229,15 @@ export default function OptimizerPage() {
         );
 
         for (const idx of Array.from(agentIndices).sort()) {
+          const heartbeatEvery = cfg[`agents.list[${idx}].heartbeat.every`];
+          const heartbeatModel = cfg[`agents.list[${idx}].heartbeat.model`];
           config.agents!.list!.push({
             name: cfg[`agents.list[${idx}].name`] ?? `agent${idx}`,
             model: cfg[`agents.list[${idx}].model.primary`] ?? "",
+            heartbeat: (heartbeatEvery || heartbeatModel) ? {
+              every: heartbeatEvery ?? "",
+              model: heartbeatModel ?? "",
+            } : undefined,
           });
         }
 
