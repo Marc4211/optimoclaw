@@ -132,6 +132,14 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
           }
         });
 
+        // Listen for scope-driven reconnects — update agents from new snapshot
+        client.onReconnect((newAgents) => {
+          if (newAgents.length > 0) {
+            setAgents(newAgents);
+          }
+          setState((prev) => ({ ...prev, connected: true }));
+        });
+
         // Persist the gateway and mark it active
         saveGateway(gateway);
         setActiveGatewayId(gateway.id);

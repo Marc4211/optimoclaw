@@ -10,6 +10,7 @@ import {
 
 type EventHandler = (event: EventFrame) => void;
 type StateHandler = (state: "connecting" | "connected" | "disconnected") => void;
+type ReconnectHandler = (agents: Agent[]) => void;
 
 interface PendingRequest {
   resolve: (payload: unknown) => void;
@@ -28,6 +29,7 @@ export class GatewayClient {
   private pending = new Map<string, PendingRequest>();
   private eventHandlers: EventHandler[] = [];
   private stateHandlers: StateHandler[] = [];
+  private reconnectHandlers: ReconnectHandler[] = [];
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private shouldReconnect = false;
@@ -338,7 +340,9 @@ export class GatewayClient {
 
   /**
    * Disconnect and reconnect to pick up new scopes.
-   * Preserves shouldReconnect so the reconnect loop doesn't fight us.
+   * Awaits the full connection handshake (including hello-ok)
+   * before returning. Notifies reconnect handlers with the
+   * new agent list so the context stays in sync.
    */
   private async reconnectForScopes(): Promise<void> {
     const wasReconnect = this.shouldReconnect;
@@ -348,7 +352,18 @@ export class GatewayClient {
     this.ws = null;
     this.rejectAllPending("Reconnecting for scopes");
     this.shouldReconnect = wasReconnect;
-    await this.connect();
+
+    // connect() returns Agent[] only after hello-ok is received
+    const agents = await this.connect();
+
+    // Notify the context so it can update its agent list
+    for (const handler of this.reconnectHandlers) {
+      try {
+        handler(agents);
+      } catch {
+        // Don't let handler errors block the retry
+      }
+    }
   }
 
   async subscribeSessions(): Promise<void> {
@@ -368,6 +383,14 @@ export class GatewayClient {
     this.stateHandlers.push(handler);
     return () => {
       this.stateHandlers = this.stateHandlers.filter((h) => h !== handler);
+    };
+  }
+
+  /** Called when reconnectForScopes completes — gives the context new agents */
+  onReconnect(handler: ReconnectHandler): () => void {
+    this.reconnectHandlers.push(handler);
+    return () => {
+      this.reconnectHandlers = this.reconnectHandlers.filter((h) => h !== handler);
     };
   }
 
