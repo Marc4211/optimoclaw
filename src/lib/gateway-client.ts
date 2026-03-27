@@ -101,7 +101,7 @@ export class GatewayClient {
                 mode: "webchat",
               },
               role: "operator",
-              scopes: ["operator.read", "operator.write"],
+              scopes: ["operator.read", "operator.write", "config.read", "config.write"],
               auth: { token: this.token },
             },
           });
@@ -234,15 +234,18 @@ export class GatewayClient {
   // --- Typed convenience methods ---
 
   async getConfig(): Promise<OpenClawConfig> {
-    // Try the config.get API first
+    // Try the config.get API first — needs config.read or operator.read scope
     try {
-      return await this.request<OpenClawConfig>("config.get");
-    } catch {
+      const result = await this.request<OpenClawConfig>("config.get", {});
+      console.log("[GatewayClient] config.get succeeded");
+      return result;
+    } catch (err) {
       // If scope not granted (e.g. "missing scope: operator.read"),
       // fall back to extracting config hints from the connect snapshot.
       // The snapshot contains agent defaults (heartbeat model/interval,
       // session defaults, etc.) but not the full openclaw.json.
-      console.warn("[GatewayClient] config.get failed, extracting from snapshot");
+      console.warn("[GatewayClient] config.get failed:", err instanceof Error ? err.message : err);
+      console.log("[GatewayClient] Extracting config from snapshot instead");
       return this.extractConfigFromSnapshot();
     }
   }
@@ -250,6 +253,8 @@ export class GatewayClient {
   /**
    * Build a partial OpenClawConfig from the hello-ok snapshot.
    * This is the fallback when config.get requires a scope we don't have.
+   * The snapshot exposes per-agent heartbeat settings, session defaults,
+   * and the default agent ID — enough to populate most optimizer levers.
    */
   private extractConfigFromSnapshot(): OpenClawConfig {
     if (!this._snapshot) return {};
@@ -261,38 +266,22 @@ export class GatewayClient {
     const defaultAgent = agents.find((a) => a.isDefault) ?? agents[0];
     const heartbeat = defaultAgent?.heartbeat as Record<string, unknown> | undefined;
 
-    // The heartbeat model is the best signal we have for the primary model.
-    // In OpenClaw, the heartbeat model is typically a cheaper model than the
-    // primary, but the snapshot doesn't expose model.primary directly.
-    // We extract what we can and let the optimizer page fall back for the rest.
     const heartbeatModel = String(heartbeat?.model ?? "");
+    const heartbeatEvery = String(heartbeat?.every ?? "30m");
 
-    // Try to infer a reasonable primary model from the agent list.
-    // If any agent has a model string that includes "sonnet", that's likely the primary.
-    // Otherwise fall back to the heartbeat model (which may be haiku).
-    let inferredPrimary = "";
-    for (const a of agents) {
-      const hb = a.heartbeat as Record<string, unknown> | undefined;
-      const model = String(hb?.model ?? "").toLowerCase();
-      if (model.includes("sonnet") || model.includes("opus")) {
-        inferredPrimary = String(hb?.model ?? "");
-        break;
-      }
-    }
-    // If no sonnet/opus found, use the default agent's heartbeat model
-    if (!inferredPrimary) {
-      inferredPrimary = heartbeatModel;
-    }
+    // The snapshot doesn't expose model.primary directly.
+    // The heartbeat model is typically a cheaper model (haiku).
+    // The primary model is NOT the heartbeat model — don't conflate them.
+    // Without config.get, we can't know the primary model for certain.
+    // Leave it undefined so the optimizer shows the mock default and the UI
+    // makes it clear this value couldn't be read from the gateway.
 
     const config: OpenClawConfig = {
       agents: {
         defaults: {
-          model: {
-            primary: inferredPrimary || undefined,
-          },
           heartbeat: heartbeat
             ? {
-                every: String(heartbeat.every ?? "30m"),
+                every: heartbeatEvery,
                 model: heartbeatModel,
                 target: String(heartbeat.target ?? "none"),
               }
@@ -320,7 +309,7 @@ export class GatewayClient {
       (config as Record<string, unknown>).sessionDefaults = sessionDefaults;
     }
 
-    console.log("[GatewayClient] Extracted config from snapshot:", JSON.stringify(config).slice(0, 500));
+    console.log("[GatewayClient] Extracted config from snapshot:", JSON.stringify(config).slice(0, 800));
     return config;
   }
 

@@ -214,7 +214,7 @@ export default function OptimizerPage() {
     []
   );
 
-  // Per-lever cost deltas
+  // Per-lever cost deltas — always use rates (custom or built-in defaults)
   const leverCostDeltas = useMemo(() => {
     const rates = hasRates ? models : undefined;
     const deltas: Record<string, number> = {};
@@ -225,12 +225,6 @@ export default function OptimizerPage() {
       const changedCost = calculateCost(withChanged, rates, costOptions).total;
       deltas[lever.key] = changedCost - origCost;
     }
-    // Debug: always log cost calculation details
-    console.log("[Optimizer] Cost deltas:", deltas);
-    console.log("[Optimizer] Base cost:", calculateCost(baseConfig, rates, costOptions).total.toFixed(2));
-    console.log("[Optimizer] Projected cost:", calculateCost(values, rates, costOptions).total.toFixed(2));
-    console.log("[Optimizer] Rates:", hasRates, models?.map((m) => `${m.model}:$${m.inputPerMillion}/$${m.outputPerMillion}`));
-    console.log("[Optimizer] costOptions:", JSON.stringify(costOptions));
     return deltas;
   }, [values, baseConfig, hasRates, models, costOptions]);
 
