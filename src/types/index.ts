@@ -95,6 +95,16 @@ export interface ConnectResponse {
   };
 }
 
+/** A model available on the gateway, as returned by models.list */
+export interface GatewayModel {
+  id: string;           // e.g. "claude-haiku-4-5-20251001"
+  name: string;         // e.g. "Claude Haiku 4.5"
+  provider: string;     // e.g. "anthropic", "ollama", "openai"
+  contextWindow?: number;
+  reasoning?: boolean;
+  [key: string]: unknown;
+}
+
 export interface OpenClawConfig {
   agents?: {
     defaults?: {

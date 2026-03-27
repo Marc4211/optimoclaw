@@ -1,12 +1,14 @@
-export type ModelOption = "local-ollama" | "claude-haiku" | "claude-sonnet" | "claude-opus";
 export type FrequencyOption = "off" | "60m" | "30m" | "15m";
 export type ContextLoadOption = "lean" | "standard" | "full";
 
 export interface LeverValue {
-  heartbeatModel: ModelOption;
+  /** Full model string, e.g. "anthropic/claude-haiku-4-5-20251001" or "ollama/llama3.2:3b" */
+  heartbeatModel: string;
   heartbeatFrequency: FrequencyOption;
-  defaultModel: "claude-haiku" | "claude-sonnet" | "claude-opus";
-  compactionModel: ModelOption;
+  /** Full model string */
+  defaultModel: string;
+  /** Full model string */
+  compactionModel: string;
   compactionThreshold: number; // 20000–200000
   subagentConcurrency: number; // 1–10
   sessionContextLoading: ContextLoadOption;
@@ -22,14 +24,13 @@ export interface LeverDefinition {
   impact: string;
   guidance: string;
   type: "select" | "slider";
+  /** Static options for non-model select levers (frequency, context loading) */
   options?: { value: string; label: string }[];
   min?: number;
   max?: number;
   step?: number;
   formatValue?: (v: number) => string;
   configPath: string; // path in openclaw.json
-  /** If true, only show "Local Ollama" option when live config has an ollama model */
-  localModelGuarded?: boolean;
 }
 
 export interface Preset {

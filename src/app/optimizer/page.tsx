@@ -1,18 +1,18 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { LeverValue, ModelOption, ContextLoadOption } from "@/types/optimizer";
+import { LeverValue, ContextLoadOption } from "@/types/optimizer";
 import { OpenClawConfig } from "@/types";
 import {
   levers,
   fallbackDefaults,
   presets,
+  presetOverrides,
   sections,
   tuneModes,
   TuneMode,
   calculateCost,
   calculateDiff,
-  configHasLocalModel,
   getFilteredOptions,
   formatCost,
 } from "@/lib/optimizer";
@@ -31,10 +31,11 @@ import RateSetupCard from "@/components/rates/RateSetupCard";
 function extractLeverValues(config: OpenClawConfig): LeverValue {
   const defaults = config?.agents?.defaults;
   return {
-    heartbeatModel: mapModel(defaults?.heartbeat?.model) ?? fallbackDefaults.heartbeatModel,
+    // Model values are full strings from the gateway (e.g. "anthropic/claude-haiku-4-5-20251001")
+    heartbeatModel: defaults?.heartbeat?.model ?? fallbackDefaults.heartbeatModel,
     heartbeatFrequency: mapFrequency(defaults?.heartbeat?.every) ?? fallbackDefaults.heartbeatFrequency,
-    defaultModel: (mapModel(defaults?.model?.primary) as "claude-haiku" | "claude-sonnet" | undefined) ?? fallbackDefaults.defaultModel,
-    compactionModel: (mapModel(defaults?.compaction?.model) as "local-ollama" | "claude-haiku" | undefined) ?? fallbackDefaults.compactionModel,
+    defaultModel: defaults?.model?.primary ?? fallbackDefaults.defaultModel,
+    compactionModel: defaults?.compaction?.model ?? fallbackDefaults.compactionModel,
     compactionThreshold: fallbackDefaults.compactionThreshold,
     subagentConcurrency: defaults?.subagents?.maxConcurrent ?? fallbackDefaults.subagentConcurrency,
     sessionContextLoading: mapContextLoad((config as Record<string, unknown>)?.sessionContextLoading as string) ?? fallbackDefaults.sessionContextLoading,
@@ -42,16 +43,6 @@ function extractLeverValues(config: OpenClawConfig): LeverValue {
     rateLimitDelay: ((config as Record<string, unknown>)?.rateLimitDelay as number) ?? fallbackDefaults.rateLimitDelay,
     searchBatchLimit: ((config as Record<string, unknown>)?.searchBatchLimit as number) ?? fallbackDefaults.searchBatchLimit,
   };
-}
-
-function mapModel(model?: string): ModelOption | undefined {
-  if (!model) return undefined;
-  const lower = model.toLowerCase();
-  if (lower.includes("ollama") || lower.startsWith("local")) return "local-ollama";
-  if (lower.includes("haiku")) return "claude-haiku";
-  if (lower.includes("sonnet")) return "claude-sonnet";
-  if (lower.includes("opus")) return "claude-opus";
-  return undefined;
 }
 
 function mapFrequency(every?: string): "off" | "60m" | "30m" | "15m" | undefined {
@@ -97,18 +88,16 @@ function extractAgentLeverValues(
 
   const agentValues = { ...defaults };
 
-  // Per-agent model
-  const agentModel = mapModel(agent.model as string | undefined);
-  if (agentModel) {
-    agentValues.defaultModel = agentModel as typeof agentValues.defaultModel;
+  // Per-agent model — full string passthrough
+  if (agent.model) {
+    agentValues.defaultModel = String(agent.model);
   } else {
     inherited.add("defaultModel");
   }
 
   // Per-agent heartbeat
   if (hb?.model) {
-    const m = mapModel(hb.model as string);
-    if (m) agentValues.heartbeatModel = m;
+    agentValues.heartbeatModel = String(hb.model);
   } else {
     inherited.add("heartbeatModel");
   }
@@ -130,26 +119,16 @@ function extractAgentLeverValues(
 
 // --- Lever value → real OpenClaw config value mapping ---
 
-/** Map BroadClaw internal lever values back to the actual config strings
- *  the OpenClaw gateway expects. ollamaModel is the original string from
- *  the snapshot so we preserve whatever local model the user has configured. */
-function leverValueToConfig(key: string, value: string | number, ollamaModel?: string): string | number {
-  // Model keys → full Anthropic model identifiers
-  if (key === "defaultModel" || key === "heartbeatModel" || key === "compactionModel") {
-    const v = String(value);
-    if (v === "claude-sonnet") return "anthropic/claude-sonnet-4-6";
-    if (v === "claude-haiku") return "anthropic/claude-haiku-4-5-20251001";
-    if (v === "claude-opus") return "anthropic/claude-opus-4-6";
-    if (v === "local-ollama") return ollamaModel ?? "ollama/llama3.2:3b";
-    return v; // pass through unknown values
-  }
-  // Frequency — pass through as-is (e.g. "30m", "off", "disabled")
+/** Map BroadClaw lever values to config values for openclaw config set.
+ *  Model values are already full strings from the gateway — no mapping needed.
+ *  Only frequency needs a small transform (off → disabled). */
+function leverValueToConfig(key: string, value: string | number): string | number {
   if (key === "heartbeatFrequency") {
     const v = String(value);
     if (v === "off") return "disabled";
     return v;
   }
-  // Numeric and other values — pass through
+  // Model values and everything else pass through as-is
   return value;
 }
 
@@ -160,21 +139,18 @@ const MODEL_LEVER_KEYS = new Set(["defaultModel", "heartbeatModel", "compactionM
 
 export default function OptimizerPage() {
   const { hasRates, loaded, models, config: ratesConfig } = useRates();
-  const { client, connected, activeGateway, agents } = useGateway();
+  const { client, connected, activeGateway, agents, availableModels } = useGateway();
   const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...fallbackDefaults });
   const [values, setValues] = useState<LeverValue>({ ...fallbackDefaults });
   const [showDiff, setShowDiff] = useState(false);
   const [applied, setApplied] = useState(false);
   const [applying, setApplying] = useState(false);
   const [loadingConfig, setLoadingConfig] = useState(false);
-  const [hasLocalModel, setHasLocalModel] = useState(false);
   const [tuneMode, setTuneMode] = useState<TuneMode | null>(null);
   const [showTuneChooser, setShowTuneChooser] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [inheritedLevers, setInheritedLevers] = useState<Set<string>>(new Set());
   const [lastConfig, setLastConfig] = useState<OpenClawConfig | null>(null);
-  // Store original ollama model string from snapshot so we write it back correctly
-  const [originalOllamaModel, setOriginalOllamaModel] = useState<string>("ollama/llama3.2:3b");
 
   const adminApiMonthly = ratesConfig?.realSpend?.monthlyEstimate ?? 0;
   const perModelUsage = ratesConfig?.realSpend?.perModel;
@@ -205,25 +181,6 @@ export default function OptimizerPage() {
         setValues(extracted);
         setInheritedLevers(new Set());
 
-        // Find the actual Ollama model string from the snapshot so we write it back correctly
-        const snapshot = client.snapshot;
-        const health = snapshot?.health as Record<string, unknown> | undefined;
-        const snapshotAgents = (health?.agents as Array<Record<string, unknown>>) ?? [];
-        for (const a of snapshotAgents) {
-          const hb = a.heartbeat as Record<string, unknown> | undefined;
-          const m = String(hb?.model ?? "");
-          if (m.toLowerCase().includes("ollama")) {
-            setOriginalOllamaModel(m);
-            break;
-          }
-        }
-
-        setHasLocalModel(
-          configHasLocalModel(
-            config as Record<string, unknown>,
-            client.snapshot ?? undefined
-          )
-        );
       })
       .catch(() => {})
       .finally(() => {
@@ -392,7 +349,7 @@ export default function OptimizerPage() {
           }
           changes.push({
             key: configKey,
-            value: leverValueToConfig(lever.key, values[lever.key], originalOllamaModel),
+            value: leverValueToConfig(lever.key, values[lever.key]),
           });
         }
       }
@@ -533,7 +490,8 @@ export default function OptimizerPage() {
             presets={presets}
             activePresetId={activePresetId}
             onSelect={(preset) => {
-              setValues({ ...preset.values });
+              // Merge preset overrides over current values — preserves model selections
+              setValues((prev) => ({ ...prev, ...(presetOverrides[preset.id] ?? {}) }));
               setApplied(false);
             }}
           />
@@ -592,7 +550,8 @@ export default function OptimizerPage() {
                         isModelLever={MODEL_LEVER_KEYS.has(lever.key)}
                         costDelta={leverCostDeltas[lever.key]}
                         inherited={inheritedLevers.has(lever.key)}
-                        filteredOptions={getFilteredOptions(lever, hasLocalModel)}
+                        modelOptions={MODEL_LEVER_KEYS.has(lever.key) ? availableModels : undefined}
+                        filteredOptions={getFilteredOptions(lever)}
                         rationale={
                           tuneMode
                             ? tuneModes[tuneMode].rationale[lever.key]

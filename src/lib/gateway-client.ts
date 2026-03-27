@@ -1,5 +1,6 @@
 import {
   Agent,
+  GatewayModel,
   ReqFrame,
   ResFrame,
   EventFrame,
@@ -234,6 +235,22 @@ export class GatewayClient {
   }
 
   // --- Typed convenience methods ---
+
+  /** Fetch available models from the gateway. Returns the full configured model list. */
+  async listModels(): Promise<GatewayModel[]> {
+    try {
+      const result = await this.request<{ models: GatewayModel[] } | GatewayModel[]>("models.list", {});
+      // Handle both { models: [...] } and plain array responses
+      if (Array.isArray(result)) return result;
+      if (result && Array.isArray((result as { models: GatewayModel[] }).models)) {
+        return (result as { models: GatewayModel[] }).models;
+      }
+      return [];
+    } catch (err) {
+      console.warn("[GatewayClient] models.list failed:", err);
+      return [];
+    }
+  }
 
   async getConfig(): Promise<OpenClawConfig> {
     // The cli client ID doesn't get operator.read scope, so config.get

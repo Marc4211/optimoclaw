@@ -4,7 +4,6 @@ import {
   Preset,
   CostEstimate,
   ConfigDiff,
-  ModelOption,
   FrequencyOption,
   ContextLoadOption,
 } from "@/types/optimizer";
@@ -25,14 +24,8 @@ export const levers: LeverDefinition[] = [
     guidance:
       "Use a local or lightweight model almost always. Only bump this up if your heartbeat logic is complex or makes real judgment calls.",
     type: "select",
-    options: [
-      { value: "local-ollama", label: "Local model (configured)" },
-      { value: "claude-haiku", label: "Claude Haiku" },
-      { value: "claude-sonnet", label: "Claude Sonnet" },
-      { value: "claude-opus", label: "Claude Opus" },
-    ],
+    // Options populated dynamically from gateway models.list
     configPath: "agents.defaults.heartbeat.model",
-    localModelGuarded: true,
   },
   {
     key: "heartbeatFrequency",
@@ -62,11 +55,7 @@ export const levers: LeverDefinition[] = [
     guidance:
       "Sonnet is a good default for most setups. Consider Haiku if most of your agent work is routine. Reserve Opus for specific tasks, not as a default.",
     type: "select",
-    options: [
-      { value: "claude-haiku", label: "Claude Haiku" },
-      { value: "claude-sonnet", label: "Claude Sonnet" },
-      { value: "claude-opus", label: "Claude Opus" },
-    ],
+    // Options populated dynamically from gateway models.list
     configPath: "agents.defaults.model.primary",
   },
   {
@@ -95,14 +84,8 @@ export const levers: LeverDefinition[] = [
     guidance:
       "A mid-tier model is usually the right call. Haiku or a local model works well for most setups.",
     type: "select",
-    options: [
-      { value: "local-ollama", label: "Local model (configured)" },
-      { value: "claude-haiku", label: "Claude Haiku" },
-      { value: "claude-sonnet", label: "Claude Sonnet" },
-      { value: "claude-opus", label: "Claude Opus" },
-    ],
+    // Options populated dynamically from gateway models.list
     configPath: "agents.defaults.compaction.model",
-    localModelGuarded: true,
   },
   {
     key: "subagentConcurrency",
@@ -264,10 +247,10 @@ export const tuneModes: Record<TuneMode, TuneModeDefinition> = {
 // They are only used when a lever value can't be read from the gateway snapshot.
 
 export const fallbackDefaults: LeverValue = {
-  heartbeatModel: "claude-haiku",
+  heartbeatModel: "anthropic/claude-haiku-4-5-20251001",
   heartbeatFrequency: "30m",
-  defaultModel: "claude-haiku",
-  compactionModel: "claude-haiku",
+  defaultModel: "anthropic/claude-haiku-4-5-20251001",
+  compactionModel: "anthropic/claude-haiku-4-5-20251001",
   compactionThreshold: 100000,
   subagentConcurrency: 2,
   sessionContextLoading: "standard",
@@ -278,57 +261,62 @@ export const fallbackDefaults: LeverValue = {
 
 // --- Preset profiles (aligned with LEVER_COPY.md spec table) ---
 
+/**
+ * Presets only set non-model levers (frequency, concurrency, thresholds).
+ * Model selections are always the user's explicit choice from the dropdown —
+ * presets don't override them because we don't know what models are available.
+ *
+ * The `values` here are partial — applyPreset() merges them over the current
+ * values, preserving model selections.
+ */
+export const presetOverrides: Record<string, Partial<LeverValue>> = {
+  lean: {
+    heartbeatFrequency: "60m",
+    compactionThreshold: 50000,
+    subagentConcurrency: 1,
+    sessionContextLoading: "lean",
+    memoryFileScope: 3,
+    rateLimitDelay: 8,
+    searchBatchLimit: 3,
+  },
+  balanced: {
+    heartbeatFrequency: "30m",
+    compactionThreshold: 100000,
+    subagentConcurrency: 2,
+    sessionContextLoading: "standard",
+    memoryFileScope: 7,
+    rateLimitDelay: 5,
+    searchBatchLimit: 5,
+  },
+  quality: {
+    heartbeatFrequency: "15m",
+    compactionThreshold: 150000,
+    subagentConcurrency: 4,
+    sessionContextLoading: "full",
+    memoryFileScope: 30,
+    rateLimitDelay: 2,
+    searchBatchLimit: 10,
+  },
+};
+
 export const presets: Preset[] = [
   {
     id: "lean",
     label: "Lean",
     description: "Minimize cost",
-    values: {
-      heartbeatModel: "local-ollama",
-      heartbeatFrequency: "60m",
-      defaultModel: "claude-haiku",
-      compactionModel: "local-ollama",
-      compactionThreshold: 50000,
-      subagentConcurrency: 1,
-      sessionContextLoading: "lean",
-      memoryFileScope: 3,
-      rateLimitDelay: 8,
-      searchBatchLimit: 3,
-    },
+    values: { ...fallbackDefaults, ...presetOverrides.lean },
   },
   {
     id: "balanced",
     label: "Balanced",
     description: "Cost and quality",
-    values: {
-      heartbeatModel: "claude-haiku",
-      heartbeatFrequency: "30m",
-      defaultModel: "claude-sonnet",
-      compactionModel: "claude-haiku",
-      compactionThreshold: 100000,
-      subagentConcurrency: 2,
-      sessionContextLoading: "standard",
-      memoryFileScope: 7,
-      rateLimitDelay: 5,
-      searchBatchLimit: 5,
-    },
+    values: { ...fallbackDefaults, ...presetOverrides.balanced },
   },
   {
     id: "quality",
     label: "Quality",
     description: "Maximize capability",
-    values: {
-      heartbeatModel: "claude-sonnet",
-      heartbeatFrequency: "15m",
-      defaultModel: "claude-sonnet",
-      compactionModel: "claude-haiku",
-      compactionThreshold: 150000,
-      subagentConcurrency: 4,
-      sessionContextLoading: "full",
-      memoryFileScope: 30,
-      rateLimitDelay: 2,
-      searchBatchLimit: 10,
-    },
+    values: { ...fallbackDefaults, ...presetOverrides.quality },
   },
 ];
 
@@ -367,22 +355,21 @@ export function configHasLocalModel(
  */
 export function getFilteredOptions(
   lever: LeverDefinition,
-  hasLocalModel: boolean
 ): { value: string; label: string }[] | undefined {
-  if (!lever.options) return undefined;
-  if (!lever.localModelGuarded || hasLocalModel) return lever.options;
-  return lever.options.filter((o) => o.value !== "local-ollama");
+  return lever.options;
 }
 
 // --- Cost calculation ---
 
-// Default prices per million tokens (used when no custom rates provided)
-const DEFAULT_MODEL_COSTS: Record<ModelOption, { input: number; output: number }> = {
-  "local-ollama": { input: 0, output: 0 },
-  "claude-haiku": { input: 0.25, output: 1.25 },
-  "claude-sonnet": { input: 3, output: 15 },
-  "claude-opus": { input: 15, output: 75 },
-};
+// Default prices per million tokens — keyed by substrings found in full model strings.
+// Used when no custom rates are provided via Admin API.
+const MODEL_COST_PATTERNS: Array<{ match: string; input: number; output: number }> = [
+  { match: "haiku", input: 0.25, output: 1.25 },
+  { match: "sonnet", input: 3, output: 15 },
+  { match: "opus", input: 15, output: 75 },
+  { match: "gpt-4o-mini", input: 0.15, output: 0.6 },
+  { match: "gpt-4o", input: 2.5, output: 10 },
+];
 
 const FREQUENCY_MULTIPLIER: Record<FrequencyOption, number> = {
   off: 0,
@@ -403,18 +390,33 @@ const SESSION_TOKENS_PER_DAY = 50000;
 const COMPACTION_TOKENS = 10000;
 const MEMORY_TOKENS_PER_DAY = 3000; // ~3k tokens per day of memory files
 
+/** Get model cost from full model string (e.g. "anthropic/claude-haiku-4-5-20251001") */
 function getModelCost(
-  modelKey: ModelOption,
+  modelString: string,
   customRates?: ModelRate[]
 ): { input: number; output: number } {
-  if (modelKey === "local-ollama") return { input: 0, output: 0 };
+  const lower = modelString.toLowerCase();
+  // Local/ollama models are free
+  if (lower.includes("ollama") || lower.startsWith("local")) return { input: 0, output: 0 };
+  // Try custom rates first (from Admin API)
   if (customRates) {
-    const rate = getRateForModel(customRates, modelKey);
-    if (rate) {
-      return { input: rate.inputPerMillion, output: rate.outputPerMillion };
+    const rate = getRateForModel(customRates, modelString);
+    if (rate) return { input: rate.inputPerMillion, output: rate.outputPerMillion };
+    // Also try matching by substring (e.g. "haiku" matches "claude-haiku" rate)
+    for (const r of customRates) {
+      if (lower.includes(r.model.toLowerCase().replace("claude-", ""))) {
+        return { input: r.inputPerMillion, output: r.outputPerMillion };
+      }
     }
   }
-  return DEFAULT_MODEL_COSTS[modelKey];
+  // Fall back to pattern matching on known model names
+  for (const pattern of MODEL_COST_PATTERNS) {
+    if (lower.includes(pattern.match)) {
+      return { input: pattern.input, output: pattern.output };
+    }
+  }
+  // Unknown model — return zero (don't fabricate)
+  return { input: 0, output: 0 };
 }
 
 /**
@@ -547,10 +549,11 @@ export function calculateLeverCost(
 // --- Diff calculation ---
 
 const DISPLAY_LABELS: Record<string, (v: string) => string> = {
-  heartbeatModel: (v) => ({ "local-ollama": "Local model (configured)", "claude-haiku": "anthropic/claude-haiku-4-5-20251001", "claude-sonnet": "anthropic/claude-sonnet-4-6", "claude-opus": "anthropic/claude-opus-4-6" }[v] ?? v),
+  // Model values are already full strings — pass through as-is
+  heartbeatModel: (v) => v,
   heartbeatFrequency: (v) => ({ off: "Off", "60m": "Every 60 min", "30m": "Every 30 min", "15m": "Every 15 min" }[v] ?? v),
-  defaultModel: (v) => ({ "claude-haiku": "anthropic/claude-haiku-4-5-20251001", "claude-sonnet": "anthropic/claude-sonnet-4-6", "claude-opus": "anthropic/claude-opus-4-6" }[v] ?? v),
-  compactionModel: (v) => ({ "local-ollama": "Local model (configured)", "claude-haiku": "anthropic/claude-haiku-4-5-20251001", "claude-sonnet": "anthropic/claude-sonnet-4-6", "claude-opus": "anthropic/claude-opus-4-6" }[v] ?? v),
+  defaultModel: (v) => v,
+  compactionModel: (v) => v,
   compactionThreshold: (v) => `${(Number(v) / 1000).toFixed(0)}k tokens`,
   subagentConcurrency: (v) => `${v} agent${Number(v) === 1 ? "" : "s"}`,
   sessionContextLoading: (v) => ({ lean: "Lean", standard: "Standard", full: "Full" }[v] ?? v),

@@ -9,7 +9,7 @@ import {
   useRef,
   ReactNode,
 } from "react";
-import { GatewayState, Agent, SavedGateway } from "@/types";
+import { GatewayState, Agent, GatewayModel, SavedGateway } from "@/types";
 import { GatewayClient } from "@/lib/gateway-client";
 import {
   loadGateways,
@@ -33,6 +33,8 @@ export interface GatewayUsageData {
 interface GatewayContextValue extends GatewayState {
   client: GatewayClient | null;
   agents: Agent[];
+  /** Available models from the gateway (populated via models.list on connect) */
+  availableModels: GatewayModel[];
   gateways: SavedGateway[];
   activeGateway: SavedGateway | null;
   mounted: boolean;
@@ -56,6 +58,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     error: null,
   });
   const [agents, setAgents] = useState<Agent[]>([]);
+  const [availableModels, setAvailableModels] = useState<GatewayModel[]>([]);
   const [gateways, setGateways] = useState<SavedGateway[]>([]);
   const [activeGateway, setActiveGateway] = useState<SavedGateway | null>(null);
   const [gatewayUsage] = useState<GatewayUsageData>({
@@ -154,6 +157,11 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
         });
 
         // Cost data comes from Anthropic Admin API (RatesContext), not gateway
+
+        // Fetch available models in the background
+        client.listModels().then((models) => {
+          if (models.length > 0) setAvailableModels(models);
+        });
       } catch (err) {
         setState((prev) => ({
           ...prev,
@@ -228,6 +236,7 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
         ...state,
         client: clientInstance,
         agents,
+        availableModels,
         gateways,
         activeGateway,
         gatewayUsage,

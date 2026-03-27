@@ -1,6 +1,7 @@
 "use client";
 
 import { LeverDefinition, LeverValue } from "@/types/optimizer";
+import { GatewayModel } from "@/types";
 import { formatCost } from "@/lib/optimizer";
 
 interface LeverCardProps {
@@ -14,6 +15,8 @@ interface LeverCardProps {
   costDelta: number;
   /** True when this lever value is inherited from global defaults (no per-agent override) */
   inherited?: boolean;
+  /** For model levers: dynamic model options from the gateway */
+  modelOptions?: GatewayModel[];
   filteredOptions?: { value: string; label: string }[];
   rationale?: string;
   onChange: (key: keyof LeverValue, value: string | number) => void;
@@ -26,12 +29,16 @@ export default function LeverCard({
   isModelLever,
   costDelta,
   inherited,
+  modelOptions,
   filteredOptions,
   rationale,
   onChange,
 }: LeverCardProps) {
   const options = filteredOptions ?? lever.options;
   const hasChanged = isModelLever && Math.abs(costDelta) > 0.01;
+
+  // For model levers with gateway models: use a dropdown
+  const useModelDropdown = isModelLever && modelOptions && modelOptions.length > 0;
 
   return (
     <div
@@ -75,7 +82,26 @@ export default function LeverCard({
         </div>
       </div>
 
-      {lever.type === "select" && options && (
+      {/* Model lever: dropdown populated from gateway */}
+      {useModelDropdown && (
+        <select
+          value={String(value)}
+          onChange={(e) => onChange(lever.key, e.target.value)}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          {modelOptions!.map((model) => {
+            const fullId = `${model.provider}/${model.id}`;
+            return (
+              <option key={fullId} value={fullId}>
+                {model.name} ({model.provider})
+              </option>
+            );
+          })}
+        </select>
+      )}
+
+      {/* Non-model select lever: button group (frequency, context loading, etc.) */}
+      {lever.type === "select" && !useModelDropdown && options && (
         <div className="flex flex-wrap gap-2">
           {options.map((option) => (
             <button
