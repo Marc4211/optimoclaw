@@ -376,7 +376,7 @@ export default function OptimizerPage() {
         // Surface error to user
         const msg = err instanceof Error ? err.message : "Unknown error";
         if (msg.includes("missing scope")) {
-          alert(`Permission denied: The gateway didn't grant the required scope. Try disconnecting and reconnecting from the sidebar, or check that your gateway token has admin access.`);
+          alert(`Your gateway token doesn't have admin access. Config changes require operator.admin scope.\n\nTo fix: run "openclaw devices rotate" or "openclaw devices" in your terminal to provision a new token with admin scope, then reconnect BroadClaw with the new token.`);
         } else {
           alert(`Failed to apply changes: ${msg}`);
         }
