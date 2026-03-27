@@ -8,9 +8,9 @@ import { formatCost } from "@/lib/optimizer";
 interface LeverCardProps {
   lever: LeverDefinition;
   value: string | number;
-  /** Absolute monthly cost contribution of this lever at its current value */
-  absoluteCost: number;
-  /** Delta from base config — non-zero only when user has changed this lever */
+  /** Whether this is a model selection lever (gets cost display) */
+  isModelLever: boolean;
+  /** Delta from base config — only meaningful for model levers when changed */
   costDelta: number;
   filteredOptions?: { value: string; label: string }[];
   rationale?: string;
@@ -20,7 +20,7 @@ interface LeverCardProps {
 export default function LeverCard({
   lever,
   value,
-  absoluteCost,
+  isModelLever,
   costDelta,
   filteredOptions,
   rationale,
@@ -28,7 +28,7 @@ export default function LeverCard({
 }: LeverCardProps) {
   const [expanded, setExpanded] = useState(false);
   const options = filteredOptions ?? lever.options;
-  const hasChanged = Math.abs(costDelta) > 0.01;
+  const hasChanged = isModelLever && Math.abs(costDelta) > 0.01;
 
   return (
     <div className="rounded-lg border border-border bg-surface p-5">
@@ -45,19 +45,20 @@ export default function LeverCard({
           )}
         </div>
         <div className="ml-4 flex flex-col items-end gap-1">
-          {/* Always show absolute cost of this lever */}
-          <span className="font-mono text-sm font-medium text-foreground">
-            {formatCost(absoluteCost)}/mo
-          </span>
-          {/* Show delta when user has changed this lever */}
-          {hasChanged && (
+          {/* Model levers: show — at rest, show delta when changed */}
+          {/* Non-model levers: always show — (no cost data) */}
+          {hasChanged ? (
             <span
-              className={`font-mono text-xs font-medium ${
+              className={`font-mono text-sm font-medium ${
                 costDelta < -0.01 ? "text-success" : "text-danger"
               }`}
             >
               {costDelta > 0 ? "+" : ""}
-              {formatCost(costDelta)}
+              {formatCost(costDelta)}/mo
+            </span>
+          ) : (
+            <span className="font-mono text-sm font-medium text-muted-foreground">
+              —
             </span>
           )}
           <button

@@ -11,7 +11,6 @@ import {
   tuneModes,
   TuneMode,
   calculateCost,
-  calculateLeverCost,
   calculateDiff,
   configHasLocalModel,
   getFilteredOptions,
@@ -95,11 +94,14 @@ function leverValueToConfig(key: string, value: string | number): string | numbe
   return value;
 }
 
+// Model levers — only these get cost numbers (sourced from Admin API per-model spend)
+const MODEL_LEVER_KEYS = new Set(["defaultModel", "heartbeatModel", "compactionModel"]);
+
 // --- Page component ---
 
 export default function OptimizerPage() {
   const { hasRates, loaded, models, config: ratesConfig } = useRates();
-  const { client, connected, activeGateway, agents, gatewayUsage } = useGateway();
+  const { client, connected, activeGateway, agents } = useGateway();
   const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...mockCurrentConfig });
   const [values, setValues] = useState<LeverValue>({ ...mockCurrentConfig });
   const [showDiff, setShowDiff] = useState(false);
@@ -114,32 +116,8 @@ export default function OptimizerPage() {
   const perModelUsage = ratesConfig?.realSpend?.perModel;
   const agentCount = connected && agents.length > 0 ? agents.length : 5;
 
-  // Compute actual cost from gateway usage × manual rates (fallback when no Admin API)
-  const gatewayDerivedMonthly = useMemo(() => {
-    if (adminApiMonthly > 0) return 0; // Admin API takes precedence
-    if (!gatewayUsage.loaded || gatewayUsage.perModel.length === 0) return 0;
-    if (!hasRates || models.length === 0) return 0;
-
-    let totalCost = 0;
-    for (const mu of gatewayUsage.perModel) {
-      // Match gateway model name to our rate table
-      const lower = mu.model.toLowerCase();
-      let rate = models.find((r) => lower.includes(r.model.replace("claude-", "")));
-      if (!rate) rate = models.find((r) => lower.includes("haiku") && r.model === "claude-haiku");
-      if (!rate) rate = models.find((r) => lower.includes("sonnet") && r.model === "claude-sonnet");
-      if (rate) {
-        totalCost +=
-          (mu.inputTokens * rate.inputPerMillion) / 1_000_000 +
-          (mu.outputTokens * rate.outputPerMillion) / 1_000_000;
-      }
-    }
-    // The gateway usage covers the session lifetime, not necessarily 30 days.
-    // Return as-is — the label will say "from gateway" not "last 30 days".
-    return totalCost;
-  }, [adminApiMonthly, gatewayUsage, hasRates, models]);
-
-  // The actual baseline: prefer Admin API, fall back to gateway-derived
-  const realBaselineMonthly = adminApiMonthly > 0 ? adminApiMonthly : gatewayDerivedMonthly;
+  // The actual baseline: from Admin API real spend data only
+  const realBaselineMonthly = adminApiMonthly;
 
   // Load real config from gateway when connected
   useEffect(() => {
@@ -186,10 +164,24 @@ export default function OptimizerPage() {
     [agentCount, realBaselineMonthly, baseConfig, perModelUsage]
   );
 
-  const projectedCost = useMemo(
-    () => calculateCost(values, hasRates ? models : undefined, costOptions),
-    [values, hasRates, models, costOptions]
-  );
+  // Check if any model levers have changed
+  const modelLeverChanged = useMemo(() => {
+    for (const key of MODEL_LEVER_KEYS) {
+      if (String(values[key as keyof LeverValue]) !== String(baseConfig[key as keyof LeverValue])) {
+        return true;
+      }
+    }
+    return false;
+  }, [values, baseConfig]);
+
+  // Projected cost: equals actual when no model levers changed.
+  // Only diverges when a model lever is changed (the only thing we can price).
+  const projectedCost = useMemo(() => {
+    if (!modelLeverChanged && realBaselineMonthly > 0) {
+      return { monthlyInput: 0, monthlyOutput: 0, total: realBaselineMonthly };
+    }
+    return calculateCost(values, hasRates ? models : undefined, costOptions);
+  }, [values, hasRates, models, costOptions, modelLeverChanged, realBaselineMonthly]);
 
   const diffs = useMemo(
     () => calculateDiff(baseConfig, values),
@@ -215,21 +207,16 @@ export default function OptimizerPage() {
     []
   );
 
-  // Per-lever absolute cost — what each lever costs at its current value
-  const leverAbsoluteCosts = useMemo(() => {
-    const rates = hasRates ? models : undefined;
-    const costs: Record<string, number> = {};
-    for (const lever of levers) {
-      costs[lever.key] = calculateLeverCost(lever.key, values, rates, costOptions);
-    }
-    return costs;
-  }, [values, hasRates, models, costOptions]);
-
-  // Per-lever cost deltas — change from base when user modifies a lever
+  // Per-lever cost deltas — only for model levers, only when changed from base.
+  // Uses Admin API per-model spend × rate difference, not fabricated estimates.
   const leverCostDeltas = useMemo(() => {
     const rates = hasRates ? models : undefined;
     const deltas: Record<string, number> = {};
     for (const lever of levers) {
+      if (!MODEL_LEVER_KEYS.has(lever.key)) {
+        deltas[lever.key] = 0;
+        continue;
+      }
       if (String(values[lever.key]) !== String(baseConfig[lever.key])) {
         const withOriginal = { ...baseConfig };
         const withChanged = { ...baseConfig, [lever.key]: values[lever.key] };
@@ -242,19 +229,6 @@ export default function OptimizerPage() {
     }
     return deltas;
   }, [values, baseConfig, hasRates, models, costOptions]);
-
-  // Per-section summed absolute costs
-  const sectionCosts = useMemo(() => {
-    const result: Record<string, number> = {};
-    for (const section of sections) {
-      let sum = 0;
-      for (const key of section.leverKeys) {
-        sum += leverAbsoluteCosts[key] ?? 0;
-      }
-      result[section.id] = sum;
-    }
-    return result;
-  }, [leverAbsoluteCosts]);
 
   // Visible sections/levers based on tune mode
   const visibleLeverKeys = useMemo(() => {
@@ -336,9 +310,6 @@ export default function OptimizerPage() {
               {adminApiMonthly > 0 && (
                 <> &middot; ${adminApiMonthly.toFixed(0)}/mo actual (last 30 days)</>
               )}
-              {adminApiMonthly === 0 && gatewayDerivedMonthly > 0 && (
-                <> &middot; ~${gatewayDerivedMonthly.toFixed(0)} est. (from gateway usage &times; your rates)</>
-              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -396,7 +367,7 @@ export default function OptimizerPage() {
         {/* Cost summary */}
         <CostSummary
           actualCost={realBaselineMonthly > 0 ? realBaselineMonthly : null}
-          actualSource={adminApiMonthly > 0 ? "admin-api" : gatewayDerivedMonthly > 0 ? "gateway" : undefined}
+          actualSource={adminApiMonthly > 0 ? "admin-api" : undefined}
           projectedCost={projectedCost.total}
           hasChanges={hasChanges}
           onApply={handleApply}
@@ -439,7 +410,13 @@ export default function OptimizerPage() {
                 <div className="mb-3 flex items-center justify-between">
                   <h2 className="text-sm font-semibold">{section.label}</h2>
                   <span className="font-mono text-xs font-medium text-muted-foreground">
-                    {formatCost(sectionCosts[section.id])}/mo
+                    {(() => {
+                      // Only Model Routing section shows a cost rollup, and only when a model lever has changed
+                      if (section.id !== "model-routing") return "—";
+                      const sectionDelta = section.leverKeys.reduce((sum, k) => sum + (leverCostDeltas[k] ?? 0), 0);
+                      if (Math.abs(sectionDelta) < 0.01) return "—";
+                      return `${sectionDelta > 0 ? "+" : ""}${formatCost(sectionDelta)}/mo`;
+                    })()}
                   </span>
                 </div>
                 <div className="grid gap-3">
@@ -448,7 +425,7 @@ export default function OptimizerPage() {
                       key={lever.key}
                       lever={lever}
                       value={values[lever.key]}
-                      absoluteCost={leverAbsoluteCosts[lever.key]}
+                      isModelLever={MODEL_LEVER_KEYS.has(lever.key)}
                       costDelta={leverCostDeltas[lever.key]}
                       filteredOptions={getFilteredOptions(lever, hasLocalModel)}
                       rationale={
