@@ -158,10 +158,26 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
 
         // Cost data comes from Anthropic Admin API (RatesContext), not gateway
 
-        // Fetch available models in the background
-        client.listModels().then((models) => {
-          if (models.length > 0) setAvailableModels(models);
-        });
+        // Fetch available models via CLI route (WebSocket models.list needs operator.read)
+        const configPath = (client.snapshot?.configPath as string) ?? "";
+        const profileMatch = configPath.match(/\.openclaw-([^/]+)\//);
+        const profile = profileMatch ? profileMatch[1] : "";
+        fetch(`/api/models-list?profile=${encodeURIComponent(profile)}`)
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.models && data.models.length > 0) {
+              const mapped: GatewayModel[] = data.models.map((m: Record<string, unknown>) => ({
+                id: String(m.id ?? m.fullId ?? ""),
+                name: String(m.name ?? m.id ?? ""),
+                provider: String(m.provider ?? "unknown"),
+                contextWindow: Number(m.contextWindow ?? 0),
+              }));
+              setAvailableModels(mapped);
+            }
+          })
+          .catch(() => {
+            // Silently fall back — models will come from snapshot agent data
+          });
       } catch (err) {
         setState((prev) => ({
           ...prev,
