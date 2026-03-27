@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown } from "lucide-react";
 import { LeverDefinition, LeverValue } from "@/types/optimizer";
 import { formatCost } from "@/lib/optimizer";
 
@@ -26,7 +24,6 @@ export default function LeverCard({
   rationale,
   onChange,
 }: LeverCardProps) {
-  const [expanded, setExpanded] = useState(false);
   const options = filteredOptions ?? lever.options;
   const hasChanged = isModelLever && Math.abs(costDelta) > 0.01;
 
@@ -44,9 +41,7 @@ export default function LeverCard({
             </span>
           )}
         </div>
-        <div className="ml-4 flex flex-col items-end gap-1">
-          {/* Model levers: show — at rest, show delta when changed */}
-          {/* Non-model levers: always show — (no cost data) */}
+        <div className="ml-4 flex items-end">
           {hasChanged ? (
             <span
               className={`font-mono text-sm font-medium ${
@@ -61,32 +56,8 @@ export default function LeverCard({
               —
             </span>
           )}
-          <button
-            onClick={() => setExpanded((p) => !p)}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Details
-            <ChevronDown
-              size={12}
-              className={`transition-transform ${expanded ? "rotate-180" : ""}`}
-            />
-          </button>
         </div>
       </div>
-
-      {/* Expandable impact + guidance */}
-      {expanded && (
-        <div className="mb-4 space-y-2 rounded-md bg-background p-3">
-          <div>
-            <span className="text-xs font-medium text-foreground">Impact: </span>
-            <span className="text-xs text-muted-foreground">{lever.impact}</span>
-          </div>
-          <div>
-            <span className="text-xs font-medium text-foreground">Guidance: </span>
-            <span className="text-xs text-muted-foreground">{lever.guidance}</span>
-          </div>
-        </div>
-      )}
 
       {lever.type === "select" && options && (
         <div className="flex flex-wrap gap-2">

@@ -259,16 +259,16 @@ export class GatewayClient {
     const heartbeatModel = String(heartbeat?.model ?? "");
     const heartbeatEvery = String(heartbeat?.every ?? "30m");
 
-    // The snapshot doesn't expose model.primary directly.
-    // The heartbeat model is typically a cheaper model (haiku).
-    // The primary model is NOT the heartbeat model — don't conflate them.
-    // Without config.get, we can't know the primary model for certain.
-    // Leave it undefined so the optimizer shows the mock default and the UI
-    // makes it clear this value couldn't be read from the gateway.
+    // The snapshot doesn't expose agents.defaults.model.primary directly.
+    // Use the default agent's heartbeat model as the best available proxy.
+    // In most OpenClaw configs, the global default model matches the
+    // default agent's heartbeat model.
+    const primaryModel = heartbeatModel || undefined;
 
     const config: OpenClawConfig = {
       agents: {
         defaults: {
+          model: primaryModel ? { primary: primaryModel } : undefined,
           heartbeat: heartbeat
             ? {
                 every: heartbeatEvery,
