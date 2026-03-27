@@ -54,11 +54,20 @@ export async function GET(request: NextRequest) {
       // Tags are the last column
       const tags = parts[5] ?? parts[4] ?? "";
 
-      // Build a human-readable name from the model ID
-      // e.g. "claude-opus-4-6" → "Claude Opus 4.6"
-      const name = modelId
-        .replace(/[-_]/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase());
+      // Use alias from tags if available (e.g. "alias:opus" → "Opus")
+      // Otherwise build from model ID
+      const aliasTag = tags.split(",").find((t: string) => t.startsWith("alias:"));
+      let name: string;
+      if (aliasTag) {
+        const alias = aliasTag.slice(6);
+        name = alias.charAt(0).toUpperCase() + alias.slice(1);
+        // Prefix with provider for clarity
+        if (provider === "anthropic") name = `Claude ${name}`;
+      } else {
+        name = modelId
+          .replace(/[-_]/g, " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+      }
 
       models.push({
         id: modelId,

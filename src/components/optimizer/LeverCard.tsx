@@ -83,7 +83,7 @@ export default function LeverCard({
       </div>
 
       {/* Model lever: dropdown populated from gateway */}
-      {useModelDropdown && (
+      {isModelLever && useModelDropdown && (
         <select
           value={String(value)}
           onChange={(e) => onChange(lever.key, e.target.value)}
@@ -98,6 +98,13 @@ export default function LeverCard({
             );
           })}
         </select>
+      )}
+      {/* Model lever: loading state while models fetch */}
+      {isModelLever && !useModelDropdown && (
+        <div className="flex items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+          <span className="animate-pulse">Loading models...</span>
+          <span className="font-mono text-xs">({String(value)})</span>
+        </div>
       )}
 
       {/* Non-model select lever: button group (frequency, context loading, etc.) */}
