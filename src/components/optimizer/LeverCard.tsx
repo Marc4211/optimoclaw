@@ -15,6 +15,8 @@ interface LeverCardProps {
   costDelta: number;
   /** True when this lever value is inherited from global defaults (no per-agent override) */
   inherited?: boolean;
+  /** Custom tag to show instead of "using global default" (e.g. "LosslessClaw feature") */
+  tagOverride?: string;
   /** Disable the lever with a message (e.g. plugin not installed) */
   disabled?: boolean;
   disabledMessage?: string;
@@ -32,6 +34,7 @@ export default function LeverCard({
   isModelLever,
   costDelta,
   inherited,
+  tagOverride,
   disabled,
   disabledMessage,
   modelOptions,
@@ -56,8 +59,8 @@ export default function LeverCard({
         <div className="flex-1">
           <h3 className="text-sm font-medium">
             {labelOverride ?? lever.label}
-            {inherited && (
-              <span className="ml-2 text-xs font-normal text-muted-foreground/60">(inherited)</span>
+            {(inherited || tagOverride) && (
+              <span className="ml-2 text-xs font-normal text-muted-foreground/60">({tagOverride ?? "using global default"})</span>
             )}
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">

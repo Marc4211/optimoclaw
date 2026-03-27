@@ -646,6 +646,7 @@ export default function OptimizerPage() {
                   isModelLever={true}
                   costDelta={leverCostDeltas[lever.key]}
                   inherited={inheritedLevers.has(lever.key)}
+                  tagOverride={lever.key === "compactionModel" && hasLosslessClaw ? "LosslessClaw feature" : undefined}
                   disabled={lever.key === "compactionModel" && !hasLosslessClaw}
                   disabledMessage={
                     lever.key === "compactionModel" && !hasLosslessClaw
