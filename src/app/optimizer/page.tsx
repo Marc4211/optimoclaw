@@ -419,17 +419,25 @@ export default function OptimizerPage() {
       for (const diff of diffs) {
         const lever = levers.find((l) => l.configPath === diff.field);
         if (lever) {
-          // If targeting a specific agent, rewrite the config path to agents.list[index].*
+          // If targeting a specific agent, rewrite per-agent config paths
           let configKey = diff.field;
           const agentId = selectedAgentId;
-          if (agentId) {
-            // Find the agent's index in the agents.list array from the snapshot
-            const snapshot = client?.snapshot;
-            const health = snapshot?.health as Record<string, unknown> | undefined;
-            const snapshotAgents = (health?.agents as Array<Record<string, unknown>>) ?? [];
-            const agentIndex = snapshotAgents.findIndex(
-              (a) => String(a.agentId) === agentId
-            );
+
+          // These levers are global-only — never rewrite to per-agent paths
+          const GLOBAL_ONLY_PATHS = new Set([
+            "agents.defaults.subagents.maxConcurrent",
+            "agents.defaults.compaction.threshold",
+            "agents.defaults.sessionContextLoading",
+            "agents.defaults.memoryFileScope",
+            "agents.defaults.rateLimitDelay",
+            "agents.defaults.searchBatchLimit",
+          ]);
+
+          if (agentId && !GLOBAL_ONLY_PATHS.has(configKey)) {
+            // Find the agent's index from the CLI config data (more reliable than snapshot)
+            const agentIndex = lastConfig?.agents?.list?.findIndex(
+              (a) => a.name === agentId
+            ) ?? -1;
             if (agentIndex >= 0) {
               // agents.defaults.heartbeat.model → agents.list[0].heartbeat.model
               configKey = configKey.replace(
