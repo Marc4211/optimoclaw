@@ -165,6 +165,7 @@ export default function OptimizerPage() {
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [tuneMode, setTuneMode] = useState<TuneMode | null>(null);
   const [hasLosslessClaw, setHasLosslessClaw] = useState(false);
+  const [showBillingSetup, setShowBillingSetup] = useState(false);
   const [showTuneChooser, setShowTuneChooser] = useState(false);
   // Default to the default agent (isDefault: true from snapshot), not "Global defaults"
   const defaultAgentId = agents.find((a) => a.id === (client?.snapshot?.sessionDefaults as Record<string, unknown>)?.defaultAgentId)?.id
@@ -571,6 +572,7 @@ export default function OptimizerPage() {
 
   if (!loaded) return null;
   if (!hasRates) return <RateSetupCard />;
+  if (showBillingSetup) return <RateSetupCard onClose={() => setShowBillingSetup(false)} />;
 
   return (
     <div className="p-8" data-page="optimizer">

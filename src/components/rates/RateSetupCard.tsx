@@ -9,7 +9,7 @@ import { useRates } from "@/contexts/RatesContext";
 
 type SetupPath = "choose" | "manual" | "anthropic-key" | "openai-key";
 
-export default function RateSetupCard() {
+export default function RateSetupCard({ onClose }: { onClose?: () => void } = {}) {
   const { config } = useRates();
   const [path, setPath] = useState<SetupPath>("choose");
 
@@ -127,6 +127,16 @@ export default function RateSetupCard() {
         <p className="mt-4 text-center text-xs text-muted-foreground/70">
           Ollama and local models are always $0 — no setup needed.
         </p>
+
+        {/* Back to optimizer — only when opened from manage link */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="mt-4 w-full py-2 text-center text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            &larr; Back to optimizer
+          </button>
+        )}
       </div>
     </div>
   );

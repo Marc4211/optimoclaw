@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Plus,
   Trash2,
+  Settings,
 } from "lucide-react";
 import { useGateway } from "@/contexts/GatewayContext";
 
@@ -83,6 +84,22 @@ export default function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Spacer */}
+        <div className="flex-1" />
+
+        {/* Settings at bottom of nav */}
+        <Link
+          href="/settings"
+          className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
+            pathname === "/settings"
+              ? "bg-muted text-foreground"
+              : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"
+          }`}
+        >
+          <Settings size={16} />
+          Settings
+        </Link>
       </nav>
 
       {/* Gateway switcher */}
