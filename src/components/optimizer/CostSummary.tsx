@@ -72,13 +72,13 @@ export default function CostSummary({
             <div className="space-y-4">
               {/* Header with totals */}
               <div>
-                <p className="text-xs font-medium text-muted-foreground">Active Session Tokens</p>
+                <p className="text-xs font-medium text-muted-foreground">Current Token Usage</p>
                 <div className="mt-1 flex items-baseline gap-3">
                   <span className="font-mono text-2xl font-semibold text-foreground">
                     {formatTokens(sessionSummary!.totalTokens)}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    across {sessionSummary!.sessionCount} session{sessionSummary!.sessionCount !== 1 ? "s" : ""}
+                    across {sessionSummary!.sessionCount} active session{sessionSummary!.sessionCount !== 1 ? "s" : ""}
                   </span>
                 </div>
                 <div className="mt-1 flex gap-4 text-xs text-muted-foreground">
@@ -186,7 +186,7 @@ export default function CostSummary({
               )}
 
               <p className="text-[10px] text-muted-foreground/50">
-                Active sessions only · adjust the levers below to see estimated impact
+                Shows sessions currently running on the gateway — not historical usage · adjust the levers below to see estimated impact
               </p>
             </div>
           ) : (
