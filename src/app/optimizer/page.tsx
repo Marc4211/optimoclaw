@@ -143,8 +143,21 @@ export default function OptimizerPage() {
   const { hasRates, loaded, models, config: ratesConfig } = useRates();
   const { client, connected, activeGateway, agents, availableModels } = useGateway();
   const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...fallbackDefaults });
-  // originalConfig: the config that generated the Actual spend — never updated after initial load
-  const [originalConfig, setOriginalConfig] = useState<LeverValue | null>(null);
+  // originalConfig: the config that generated the Actual spend — persisted to localStorage
+  // so it survives reconnects and page remounts. Only reset when user explicitly clicks "Reset baseline".
+  const [originalConfig, setOriginalConfigState] = useState<LeverValue | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const stored = localStorage.getItem("broadclaw-original-config");
+      return stored ? JSON.parse(stored) : null;
+    } catch { return null; }
+  });
+  const setOriginalConfig = (config: LeverValue) => {
+    setOriginalConfigState(config);
+    try {
+      localStorage.setItem("broadclaw-original-config", JSON.stringify(config));
+    } catch { /* non-critical */ }
+  };
   const [values, setValues] = useState<LeverValue>({ ...fallbackDefaults });
   const [showDiff, setShowDiff] = useState(false);
   const [applied, setApplied] = useState(false);
