@@ -51,10 +51,10 @@ export default function RateSetupCard({ onClose }: { onClose?: () => void } = {}
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
             <Gauge size={28} className="text-primary" />
           </div>
-          <h1 className="text-lg font-semibold">Set Up Billing Sources</h1>
+          <h1 className="text-lg font-semibold">Connect Billing (Optional)</h1>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            Connect your provider billing APIs to see actual spend, or enter
-            rates manually. Connect as many providers as you use.
+            BroadClaw already estimates your costs using published model rates.
+            Connect a billing API to compare estimates against your actual bill.
           </p>
         </div>
 
@@ -76,8 +76,8 @@ export default function RateSetupCard({ onClose }: { onClose?: () => void } = {}
               </div>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                 {anthropicConnected
-                  ? "Connected — pulling actual spend from Anthropic Admin API"
-                  : "Pull actual spend via Admin API key (sk-ant-admin...)"}
+                  ? "Connected — comparing against your actual Anthropic bill"
+                  : "See your actual Anthropic bill alongside estimates"}
               </p>
             </div>
           </button>
@@ -99,8 +99,8 @@ export default function RateSetupCard({ onClose }: { onClose?: () => void } = {}
               </div>
               <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
                 {openaiConnected
-                  ? "Connected — pulling actual spend from OpenAI Usage API"
-                  : "Pull actual spend via Admin API key (sk-...)"}
+                  ? "Connected — comparing against your actual OpenAI bill"
+                  : "See your actual OpenAI bill alongside estimates"}
               </p>
             </div>
           </button>

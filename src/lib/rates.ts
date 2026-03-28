@@ -6,35 +6,49 @@ const STORAGE_KEY = "broadclaw-rates";
 
 export const defaultAnthropicRates: ModelRate[] = [
   {
+    model: "claude-opus",
+    displayName: "Claude Opus 4.6",
+    provider: "anthropic",
+    inputPerMillion: 5,
+    outputPerMillion: 25,
+  },
+  {
     model: "claude-sonnet",
-    displayName: "Claude Sonnet",
+    displayName: "Claude Sonnet 4.6",
     provider: "anthropic",
     inputPerMillion: 3,
     outputPerMillion: 15,
   },
   {
     model: "claude-haiku",
-    displayName: "Claude Haiku",
+    displayName: "Claude Haiku 4.5",
     provider: "anthropic",
-    inputPerMillion: 0.25,
-    outputPerMillion: 1.25,
+    inputPerMillion: 1,
+    outputPerMillion: 5,
   },
 ];
 
 export const defaultOpenAIRates: ModelRate[] = [
   {
-    model: "gpt-4o",
-    displayName: "GPT-4o",
+    model: "gpt-5.4",
+    displayName: "GPT-5.4",
     provider: "openai",
     inputPerMillion: 2.5,
-    outputPerMillion: 10,
+    outputPerMillion: 15,
   },
   {
-    model: "gpt-4o-mini",
-    displayName: "GPT-4o Mini",
+    model: "gpt-5.4-mini",
+    displayName: "GPT-5.4 Mini",
     provider: "openai",
-    inputPerMillion: 0.15,
-    outputPerMillion: 0.6,
+    inputPerMillion: 0.75,
+    outputPerMillion: 4.5,
+  },
+  {
+    model: "gpt-5.3-codex",
+    displayName: "GPT-5.3 Codex",
+    provider: "openai",
+    inputPerMillion: 1.75,
+    outputPerMillion: 14,
   },
 ];
 

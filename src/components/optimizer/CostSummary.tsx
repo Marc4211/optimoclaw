@@ -5,14 +5,14 @@ import { formatCost } from "@/lib/optimizer";
 import { ProviderSpend } from "@/types/rates";
 
 interface CostSummaryProps {
-  /** Fixed actual spend — does NOT change with levers */
+  /** Fixed actual spend from billing API — does NOT change with levers. Optional. */
   actualCost: number | null;
   /** Source of actualCost: "admin-api" or "gateway" */
   actualSource?: "admin-api" | "gateway";
-  /** Projected/estimated cost — updates as user changes levers */
+  /** Estimated cost from rate card × config — updates as user changes levers */
   projectedCost: number;
   hasChanges: boolean;
-  /** Per-provider spend breakdown */
+  /** Per-provider spend breakdown (from optional billing API connections) */
   providerSpend?: ProviderSpend[];
 }
 
@@ -28,7 +28,7 @@ export default function CostSummary({
   const isUp = delta > 0.01;
   const isDown = delta < -0.01;
 
-  // Build source label from connected providers
+  // Build source label from connected providers (billing API = optional context)
   const connectedProviders = (providerSpend ?? [])
     .filter((s) => s.source === "admin-api" && s.monthlyEstimate > 0)
     .map((s) => {
@@ -37,7 +37,7 @@ export default function CostSummary({
     });
 
   const sourceLabel = connectedProviders.length > 0
-    ? connectedProviders.join(" + ")
+    ? `${connectedProviders.join(" + ")} billing`
     : actualSource === "gateway"
       ? "from gateway"
       : "last 30 days";
@@ -84,10 +84,10 @@ export default function CostSummary({
           <div className="text-muted-foreground">&rarr;</div>
         )}
 
-        {/* Projected — always visible, updates with lever changes */}
+        {/* Estimated / Projected — always visible, updates with lever changes */}
         <div>
           <p className="text-xs text-muted-foreground">
-            {hasActual ? "Projected" : "Estimated"}
+            {hasActual && hasChanges ? "Projected" : "Estimated"}
           </p>
           <p className="font-mono text-lg font-semibold">
             {formatCost(projectedCost)}
@@ -95,6 +95,11 @@ export default function CostSummary({
               /mo
             </span>
           </p>
+          {!hasActual && (
+            <p className="text-[10px] text-muted-foreground/60">
+              Based on published rates
+            </p>
+          )}
         </div>
 
         {/* Delta — only when actual is available and levers changed */}

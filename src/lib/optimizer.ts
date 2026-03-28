@@ -9,6 +9,7 @@ import {
 } from "@/types/optimizer";
 import { ModelRate } from "@/types/rates";
 import { getRateForModel } from "@/lib/rates";
+import { getModelRate as getRateFromCard } from "@/lib/rate-card";
 
 // --- Lever definitions ---
 // Copy sourced from LEVER_COPY.md — description, impact, guidance verbatim.
@@ -361,14 +362,16 @@ export function getFilteredOptions(
 
 // --- Cost calculation ---
 
-// Default prices per million tokens — keyed by substrings found in full model strings.
-// Used when no custom rates are provided via Admin API.
+// Legacy fallback patterns — kept only for edge cases where both
+// the rate card AND custom rates fail to match. The rate card
+// (src/lib/rate-card.ts) is the primary source of model pricing.
 const MODEL_COST_PATTERNS: Array<{ match: string; input: number; output: number }> = [
-  { match: "haiku", input: 0.25, output: 1.25 },
+  { match: "haiku", input: 1, output: 5 },
   { match: "sonnet", input: 3, output: 15 },
-  { match: "opus", input: 15, output: 75 },
-  { match: "gpt-4o-mini", input: 0.15, output: 0.6 },
-  { match: "gpt-4o", input: 2.5, output: 10 },
+  { match: "opus", input: 5, output: 25 },
+  { match: "gpt-5.4-mini", input: 0.75, output: 4.5 },
+  { match: "gpt-5.4", input: 2.5, output: 15 },
+  { match: "gpt-5.3", input: 1.75, output: 14 },
 ];
 
 const FREQUENCY_MULTIPLIER: Record<FrequencyOption, number> = {
@@ -390,31 +393,47 @@ const SESSION_TOKENS_PER_DAY = 50000;
 const COMPACTION_TOKENS = 10000;
 const MEMORY_TOKENS_PER_DAY = 3000; // ~3k tokens per day of memory files
 
-/** Get model cost from full model string (e.g. "anthropic/claude-haiku-4-5-20251001") */
+/**
+ * Get model cost from full model string (e.g. "anthropic/claude-haiku-4-5-20251001").
+ *
+ * Priority:
+ *  1. Published rate card (src/lib/rate-card.ts) — handles aliases, versioned strings
+ *  2. Custom rates from Admin API (if user connected billing)
+ *  3. Legacy pattern matching (last resort)
+ */
 function getModelCost(
   modelString: string,
   customRates?: ModelRate[]
 ): { input: number; output: number } {
   const lower = modelString.toLowerCase();
+
   // Local/ollama models are free
   if (lower.includes("ollama") || lower.startsWith("local")) return { input: 0, output: 0 };
-  // Try custom rates first (from Admin API)
+
+  // 1. Published rate card — primary source (no API key needed)
+  const rateCardResult = getRateFromCard(modelString);
+  if (rateCardResult.input > 0 || rateCardResult.output > 0) {
+    return rateCardResult;
+  }
+
+  // 2. Custom rates from Admin API (optional, user-provided)
   if (customRates) {
     const rate = getRateForModel(customRates, modelString);
     if (rate) return { input: rate.inputPerMillion, output: rate.outputPerMillion };
-    // Also try matching by substring (e.g. "haiku" matches "claude-haiku" rate)
     for (const r of customRates) {
       if (lower.includes(r.model.toLowerCase().replace("claude-", ""))) {
         return { input: r.inputPerMillion, output: r.outputPerMillion };
       }
     }
   }
-  // Fall back to pattern matching on known model names
+
+  // 3. Legacy pattern matching (last resort)
   for (const pattern of MODEL_COST_PATTERNS) {
     if (lower.includes(pattern.match)) {
       return { input: pattern.input, output: pattern.output };
     }
   }
+
   // Unknown model — return zero (don't fabricate)
   return { input: 0, output: 0 };
 }
