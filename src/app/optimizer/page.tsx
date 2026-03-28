@@ -143,6 +143,8 @@ export default function OptimizerPage() {
   const { hasRates, loaded, models, config: ratesConfig } = useRates();
   const { client, connected, activeGateway, agents, availableModels } = useGateway();
   const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...fallbackDefaults });
+  // originalConfig: the config that generated the Actual spend — never updated after initial load
+  const [originalConfig, setOriginalConfig] = useState<LeverValue | null>(null);
   const [values, setValues] = useState<LeverValue>({ ...fallbackDefaults });
   const [showDiff, setShowDiff] = useState(false);
   const [applied, setApplied] = useState(false);
@@ -286,11 +288,14 @@ export default function OptimizerPage() {
       setBaseConfig(agentValues);
       setValues(agentValues);
       setInheritedLevers(inherited);
+      // Set originalConfig once — this represents what generated the Actual spend
+      if (!originalConfig) setOriginalConfig(agentValues);
     } else {
       const extracted = extractLeverValues(lastConfig);
       setBaseConfig(extracted);
       setValues(extracted);
       setInheritedLevers(new Set());
+      if (!originalConfig) setOriginalConfig(extracted);
     }
   }, [lastConfig, selectedAgentId]);
 
@@ -304,6 +309,20 @@ export default function OptimizerPage() {
   );
 
   // Check if any model levers have changed
+  // Compare current values against the ORIGINAL config (what generated the Actual spend).
+  // This persists across Apply — after applying a cheaper model, the Projected still
+  // reflects the new expected cost vs the old Actual.
+  const modelLeverChangedFromOriginal = useMemo(() => {
+    if (!originalConfig) return false;
+    for (const key of MODEL_LEVER_KEYS) {
+      if (String(values[key as keyof LeverValue]) !== String(originalConfig[key as keyof LeverValue])) {
+        return true;
+      }
+    }
+    return false;
+  }, [values, originalConfig]);
+
+  // Also track changes from baseConfig (for the pending changes bar / diff)
   const modelLeverChanged = useMemo(() => {
     for (const key of MODEL_LEVER_KEYS) {
       if (String(values[key as keyof LeverValue]) !== String(baseConfig[key as keyof LeverValue])) {
@@ -313,14 +332,23 @@ export default function OptimizerPage() {
     return false;
   }, [values, baseConfig]);
 
-  // Projected cost: equals actual when no model levers changed.
-  // Only diverges when a model lever is changed (the only thing we can price).
+  // Projected cost: when models differ from what generated the Actual spend,
+  // use the scale factor approach (Actual × newCost/originalCost).
+  // This stays accurate even after Apply — showing the ongoing savings/increase.
+  const projectedCostOptions = useMemo(
+    () =>
+      realBaselineMonthly > 0 && originalConfig
+        ? { agentCount, realBaselineMonthly, baseValues: originalConfig, perModel: perModelUsage }
+        : { agentCount },
+    [agentCount, realBaselineMonthly, originalConfig, perModelUsage]
+  );
+
   const projectedCost = useMemo(() => {
-    if (!modelLeverChanged && realBaselineMonthly > 0) {
+    if (!modelLeverChangedFromOriginal && realBaselineMonthly > 0) {
       return { monthlyInput: 0, monthlyOutput: 0, total: realBaselineMonthly };
     }
-    return calculateCost(values, hasRates ? models : undefined, costOptions);
-  }, [values, hasRates, models, costOptions, modelLeverChanged, realBaselineMonthly]);
+    return calculateCost(values, hasRates ? models : undefined, projectedCostOptions);
+  }, [values, hasRates, models, projectedCostOptions, modelLeverChangedFromOriginal, realBaselineMonthly]);
 
   const diffs = useMemo(
     () => calculateDiff(baseConfig, values),
@@ -604,7 +632,7 @@ export default function OptimizerPage() {
           actualCost={realBaselineMonthly > 0 ? realBaselineMonthly : null}
           actualSource={adminApiMonthly > 0 ? "admin-api" : undefined}
           projectedCost={projectedCost.total}
-          hasChanges={hasChanges}
+          hasChanges={hasChanges || modelLeverChangedFromOriginal}
         />
 
         {/* Agent scope selector */}
