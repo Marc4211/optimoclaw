@@ -192,9 +192,9 @@ export default function ContextUtilizationChart({ data }: Props) {
               </span>
               <span className="font-mono text-muted-foreground/70">
                 {formatTokens(session.totalTokens)}
-                <span className="text-muted-foreground/40">
+                <span className="text-muted-foreground/60">
                   {" / "}
-                  {formatWindow(session.contextTokens)}
+                  {formatWindow(session.contextTokens)} window
                 </span>
               </span>
             </div>

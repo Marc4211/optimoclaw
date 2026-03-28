@@ -137,8 +137,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Context utilization — per session with window info
+    // Filter out sessions with unreasonably small context windows (< 8K) — likely stale/corrupt data
     const contextSessions = sessions
-      .filter((s) => s.contextTokens > 0 && s.percentUsed != null)
+      .filter((s) => s.contextTokens >= 8_000 && s.percentUsed != null)
       .map((s) => ({
         agentId: s.agentId,
         model: s.model,
