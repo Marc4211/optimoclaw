@@ -18,12 +18,13 @@ import {
 import { useGateway } from "@/contexts/GatewayContext";
 import LeverCard from "@/components/optimizer/LeverCard";
 import CostSummary, { ModelTokenUsage } from "@/components/optimizer/CostSummary";
+import ContextUtilizationChart, { ContextUtilizationData } from "@/components/optimizer/ContextUtilizationChart";
+import CacheEfficiencyChart, { CacheBreakdownData } from "@/components/optimizer/CacheEfficiencyChart";
 import PresetSelector from "@/components/optimizer/PresetSelector";
 import AgentSelector from "@/components/optimizer/AgentSelector";
 import DiffPreview from "@/components/optimizer/DiffPreview";
 import { RolloutTarget } from "@/components/optimizer/DiffPreview";
 import StickyApplyBar from "@/components/optimizer/StickyApplyBar";
-// Billing API setup removed — rate card provides estimates without any API keys
 
 // --- Config extraction helpers ---
 
@@ -175,6 +176,8 @@ export default function OptimizerPage() {
   const [inheritedLevers, setInheritedLevers] = useState<Set<string>>(new Set());
   const [lastConfig, setLastConfig] = useState<OpenClawConfig | null>(null);
   const [tokensByModel, setTokensByModel] = useState<ModelTokenUsage[]>([]);
+  const [contextUtilization, setContextUtilization] = useState<ContextUtilizationData | null>(null);
+  const [cacheBreakdown, setCacheBreakdown] = useState<CacheBreakdownData | null>(null);
 
   const agentCount = connected && agents.length > 0 ? agents.length : 1;
 
@@ -300,17 +303,31 @@ export default function OptimizerPage() {
     fetch(`/api/sessions?profile=${encodeURIComponent(profile)}`)
       .then((r) => r.json())
       .then((data) => {
-        if (cancelled || !data.summary?.byModel) return;
-        setTokensByModel(
-          data.summary.byModel.map((m: { model: string; totalTokens: number; sessionCount: number }) => ({
-            model: m.model,
-            totalTokens: m.totalTokens,
-            sessionCount: m.sessionCount,
-          }))
-        );
+        if (cancelled || !data.summary) return;
+
+        // Token usage by model (for routing sort)
+        if (data.summary.byModel) {
+          setTokensByModel(
+            data.summary.byModel.map((m: { model: string; totalTokens: number; sessionCount: number }) => ({
+              model: m.model,
+              totalTokens: m.totalTokens,
+              sessionCount: m.sessionCount,
+            }))
+          );
+        }
+
+        // Context utilization data
+        if (data.summary.contextUtilization) {
+          setContextUtilization(data.summary.contextUtilization as ContextUtilizationData);
+        }
+
+        // Cache breakdown data
+        if (data.summary.cacheBreakdown) {
+          setCacheBreakdown(data.summary.cacheBreakdown as CacheBreakdownData);
+        }
       })
       .catch(() => {
-        // Non-critical — sort falls back to cost tier
+        // Non-critical — charts just won't render
       });
 
     return () => { cancelled = true; };
@@ -355,6 +372,20 @@ export default function OptimizerPage() {
     [baseConfig, values]
   );
   const hasChanges = diffs.length > 0;
+
+  // Build agent list with correct primary models from CLI config (not snapshot heartbeat models)
+  const configAgents = useMemo(() => {
+    const list = lastConfig?.agents?.list;
+    if (!list || list.length === 0) return agents; // fall back to snapshot agents
+    return list.map((a: { name?: string; model?: string }) => ({
+      id: a.name ?? "",
+      name: a.name ?? "",
+      model: a.model ?? "",
+      status: "online" as const,
+      sessionCount: 0,
+      tokenUsage: 0,
+    }));
+  }, [lastConfig, agents]);
 
   const activePresetId = useMemo(() => {
     for (const preset of presets) {
@@ -625,10 +656,22 @@ export default function OptimizerPage() {
         <CostSummary
           percentChange={overallPercentChange}
           hasChanges={hasChanges}
-          agents={agents}
+          agents={configAgents}
           globalDefaultModel={baseConfig.defaultModel as string}
           tokensByModel={tokensByModel}
         />
+
+        {/* Session insight charts — two-column on wide screens, stacked on narrow */}
+        {!hasChanges && (contextUtilization || cacheBreakdown) && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {contextUtilization && contextUtilization.sessions.length > 0 && (
+              <ContextUtilizationChart data={contextUtilization} />
+            )}
+            {cacheBreakdown && cacheBreakdown.tokenTotal > 0 && (
+              <CacheEfficiencyChart data={cacheBreakdown} />
+            )}
+          </div>
+        )}
 
         {/* Agent scope selector */}
         {connected && agents.length > 0 && (

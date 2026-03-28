@@ -8,11 +8,10 @@ const execAsync = promisify(exec);
  * GET /api/sessions?profile=digantic
  *
  * Runs `openclaw status --usage --json` to get per-session token usage.
- * This returns richer data than `sessions --all-agents --json`, including
- * cacheRead/cacheWrite breakdowns and per-session model assignments.
- *
- * Returns a summary with tokens aggregated by model, suitable for sorting
- * the model routing display by actual usage.
+ * Returns aggregated data for:
+ *  - Model token usage (for sorting the routing display)
+ *  - Context utilization per session (window size vs used)
+ *  - Cache efficiency breakdown (cacheRead/cacheWrite/fresh input/output)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -58,27 +57,35 @@ export async function GET(request: NextRequest) {
       const cacheRead = Number(s.cacheRead ?? 0);
       const cacheWrite = Number(s.cacheWrite ?? 0);
       const totalTokens = Number(s.totalTokens ?? 0);
+      const contextTokens = Number(s.contextTokens ?? 0);
+      const percentUsed = s.percentUsed != null ? Number(s.percentUsed) : null;
+      const remainingTokens = s.remainingTokens != null ? Number(s.remainingTokens) : null;
       const model = String(s.model ?? "unknown");
       const agentId = String(s.agentId ?? "unknown");
       const sessionId = String(s.sessionId ?? "");
+      const kind = String(s.kind ?? "unknown");
       const totalTokensFresh = Boolean(s.totalTokensFresh);
-
-      // Skip sessions with no token data (stale/unfresh)
-      if (!totalTokensFresh && totalTokens === 0) continue;
 
       sessions.push({
         sessionId,
         agentId,
         model,
+        kind,
         inputTokens,
         outputTokens,
         cacheRead,
         cacheWrite,
         totalTokens,
+        contextTokens,
+        percentUsed,
+        remainingTokens,
+        totalTokensFresh,
       });
     }
 
-    // Build summary aggregations
+    // --- Aggregations ---
+
+    // By model (for routing sort)
     const byModel = new Map<
       string,
       {
@@ -98,7 +105,10 @@ export async function GET(request: NextRequest) {
     let totalCacheWrite = 0;
     let totalTokens = 0;
 
-    for (const s of sessions) {
+    // Only count fresh sessions for token aggregations
+    const freshSessions = sessions.filter((s) => s.totalTokensFresh);
+
+    for (const s of freshSessions) {
       totalInput += s.inputTokens;
       totalOutput += s.outputTokens;
       totalCacheRead += s.cacheRead;
@@ -126,6 +136,41 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Context utilization — per session with window info
+    const contextSessions = sessions
+      .filter((s) => s.contextTokens > 0 && s.percentUsed != null)
+      .map((s) => ({
+        agentId: s.agentId,
+        model: s.model,
+        kind: s.kind,
+        totalTokens: s.totalTokens,
+        contextTokens: s.contextTokens,
+        percentUsed: s.percentUsed!,
+        remainingTokens: s.remainingTokens ?? 0,
+      }));
+
+    const avgPercentUsed =
+      contextSessions.length > 0
+        ? contextSessions.reduce((sum, s) => sum + s.percentUsed, 0) / contextSessions.length
+        : 0;
+
+    const totalContextAvailable = contextSessions.reduce((sum, s) => sum + s.contextTokens, 0);
+    const totalContextUsed = contextSessions.reduce((sum, s) => sum + s.totalTokens, 0);
+
+    // Cache breakdown — percentage of each token type
+    const tokenTotal = totalInput + totalOutput + totalCacheRead + totalCacheWrite;
+    const cacheBreakdown = {
+      totalInput,
+      totalOutput,
+      totalCacheRead,
+      totalCacheWrite,
+      tokenTotal,
+      cacheReadPercent: tokenTotal > 0 ? (totalCacheRead / tokenTotal) * 100 : 0,
+      cacheWritePercent: tokenTotal > 0 ? (totalCacheWrite / tokenTotal) * 100 : 0,
+      freshInputPercent: tokenTotal > 0 ? (totalInput / tokenTotal) * 100 : 0,
+      outputPercent: tokenTotal > 0 ? (totalOutput / tokenTotal) * 100 : 0,
+    };
+
     return NextResponse.json({
       sessions,
       summary: {
@@ -134,8 +179,15 @@ export async function GET(request: NextRequest) {
         totalCacheRead,
         totalCacheWrite,
         totalTokens,
-        sessionCount: sessions.length,
+        sessionCount: freshSessions.length,
         byModel: Array.from(byModel.values()),
+        contextUtilization: {
+          sessions: contextSessions,
+          avgPercentUsed,
+          totalContextAvailable,
+          totalContextUsed,
+        },
+        cacheBreakdown,
       },
     });
   } catch (err) {
@@ -153,6 +205,23 @@ function emptySummary() {
     totalTokens: 0,
     sessionCount: 0,
     byModel: [],
+    contextUtilization: {
+      sessions: [],
+      avgPercentUsed: 0,
+      totalContextAvailable: 0,
+      totalContextUsed: 0,
+    },
+    cacheBreakdown: {
+      totalInput: 0,
+      totalOutput: 0,
+      totalCacheRead: 0,
+      totalCacheWrite: 0,
+      tokenTotal: 0,
+      cacheReadPercent: 0,
+      cacheWritePercent: 0,
+      freshInputPercent: 0,
+      outputPercent: 0,
+    },
   };
 }
 
@@ -160,9 +229,14 @@ interface SessionData {
   sessionId: string;
   agentId: string;
   model: string;
+  kind: string;
   inputTokens: number;
   outputTokens: number;
   cacheRead: number;
   cacheWrite: number;
   totalTokens: number;
+  contextTokens: number;
+  percentUsed: number | null;
+  remainingTokens: number | null;
+  totalTokensFresh: boolean;
 }

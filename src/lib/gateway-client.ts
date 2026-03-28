@@ -132,14 +132,19 @@ export class GatewayClient {
               const agent = a as Record<string, unknown>;
               const sessions = agent.sessions as Record<string, unknown> | undefined;
               const heartbeat = agent.heartbeat as Record<string, unknown> | undefined;
-              const modelObj = agent.model as Record<string, unknown> | undefined;
               const recent = sessions?.recent as unknown[] | undefined;
 
-              // Primary model: agent.model.primary > agent.model > heartbeat.model
-              const primaryModel =
-                String(modelObj?.primary ?? "") ||
-                String(agent.model ?? "") ||
-                String(heartbeat?.model ?? "unknown");
+              // Primary model: agent.model.primary > agent.model (string) > heartbeat.model
+              // agent.model may be a string or an object { primary: "..." }
+              let primaryModel = "unknown";
+              if (agent.model && typeof agent.model === "object") {
+                const mObj = agent.model as Record<string, unknown>;
+                primaryModel = String(mObj.primary ?? "") || String(heartbeat?.model ?? "unknown");
+              } else if (typeof agent.model === "string" && agent.model) {
+                primaryModel = agent.model;
+              } else {
+                primaryModel = String(heartbeat?.model ?? "unknown");
+              }
 
               return {
                 id: String(agent.agentId ?? ""),
