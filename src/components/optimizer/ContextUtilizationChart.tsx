@@ -41,26 +41,46 @@ function getInsight(data: ContextUtilizationData): {
 } {
   const avg = data.avgPercentUsed;
 
+  // Check for mixed window sizes across sessions
+  const windowSizes = [...new Set(data.sessions.map((s) => s.contextTokens))];
+  const hasMixedWindows = windowSizes.length > 1;
+
   // Check for oversized windows — sessions with large windows but tiny usage
   const oversized = data.sessions.filter(
     (s) => s.contextTokens >= 500_000 && s.percentUsed < 15
   );
+  const rightsized = data.sessions.filter(
+    (s) => s.contextTokens < 500_000
+  );
 
   if (oversized.length > 0 && avg < 10) {
-    const biggest = oversized.reduce((a, b) =>
-      a.contextTokens > b.contextTokens ? a : b
-    );
+    const windowList = windowSizes
+      .sort((a, b) => b - a)
+      .map((w) => formatWindow(w))
+      .join(" and ");
+
+    if (hasMixedWindows && rightsized.length > 0) {
+      return {
+        label: "Mixed window sizes",
+        detail: `${oversized.length} session${oversized.length !== 1 ? "s use" : " uses"} a ${formatWindow(oversized[0].contextTokens)} extended context window at under ${Math.max(...oversized.map((s) => s.percentUsed))}% utilization, while ${rightsized.length} session${rightsized.length !== 1 ? "s use" : " uses"} ${formatWindow(rightsized[0].contextTokens)}. The extended windows cost more on every cache write. Check whether those sessions actually need the larger window — the gateway may have auto-assigned it.`,
+        color: "warning",
+      };
+    }
+
     return {
       label: "Over-provisioned",
-      detail: `Using ${formatTokens(biggest.totalTokens)} of a ${formatWindow(biggest.contextTokens)} context window (${biggest.percentUsed}%). A smaller window reduces cache write costs on every session refresh. Consider whether these sessions need the extended context.`,
+      detail: `All ${oversized.length} sessions use ${formatWindow(oversized[0].contextTokens)} context windows but average only ${avg.toFixed(0)}% utilization. Smaller windows reduce cache write costs on every session refresh. Consider whether these sessions need the extended context.`,
       color: "warning",
     };
   }
 
   if (avg < 15) {
+    const windowNote = hasMixedWindows
+      ? ` Window sizes vary (${windowSizes.sort((a, b) => b - a).map(formatWindow).join(", ")}) — sessions with larger windows cost more to cache even at low utilization.`
+      : "";
     return {
       label: "Low utilization",
-      detail: `Sessions are averaging ${avg.toFixed(0)}% of their context windows. If this is typical, reducing context window sizes could lower cache write costs — the gateway re-caches the full window on each write, so smaller windows mean cheaper refreshes.`,
+      detail: `Sessions are averaging ${avg.toFixed(0)}% of their context windows.${windowNote} If this is typical, reducing context window sizes could lower cache write costs — the gateway re-caches the full window on each write, so smaller windows mean cheaper refreshes.`,
       color: "warning",
     };
   }
