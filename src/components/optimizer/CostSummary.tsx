@@ -3,190 +3,123 @@
 import { useState } from "react";
 import { TrendingDown, TrendingUp, Minus, ChevronDown, Info } from "lucide-react";
 import { lookupRate } from "@/lib/rate-card";
+import { Agent } from "@/types";
 
-interface ModelTokenBreakdown {
+/** Per-agent model assignment for the routing overview */
+export interface AgentModelEntry {
+  name: string;
   model: string;
-  modelProvider: string;
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-}
-
-interface AgentTokenBreakdown {
-  agentId: string;
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  models: string[];
-}
-
-export interface SessionSummary {
-  totalInput: number;
-  totalOutput: number;
-  totalTokens: number;
-  sessionCount: number;
-  byModel: ModelTokenBreakdown[];
-  byAgent: AgentTokenBreakdown[];
+  isDefault: boolean; // true = using global default, no per-agent override
 }
 
 interface CostSummaryProps {
   /** Percentage change from base config. 0 = no change, -30 = 30% cheaper, +50 = 50% more expensive */
   percentChange: number;
   hasChanges: boolean;
-  /** Token usage summary from active sessions — shown when no changes are pending */
-  sessionSummary?: SessionSummary | null;
-  /** Whether session data is still loading */
-  sessionsLoading?: boolean;
+  /** Agents with their current model assignments */
+  agents: Agent[];
+  /** The global default model string */
+  globalDefaultModel?: string;
+  /** Per-agent model entries (with inherited flag) — if not provided, derived from agents */
+  agentModels?: AgentModelEntry[];
 }
 
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
+function formatRate(input: number, output: number): string {
+  return `$${input}/$${output} per MTok`;
 }
 
 export default function CostSummary({
   percentChange,
   hasChanges,
-  sessionSummary,
-  sessionsLoading,
+  agents,
+  globalDefaultModel,
+  agentModels,
 }: CostSummaryProps) {
   const isUp = percentChange > 0.5;
   const isDown = percentChange < -0.5;
   const [showWhyNoDollars, setShowWhyNoDollars] = useState(false);
 
-  // --- No changes state: show token breakdown + explainer ---
+  // --- No changes state: show model routing overview + explainer ---
   if (!hasChanges) {
-    const hasSessions = sessionSummary && sessionSummary.sessionCount > 0;
+    // Build model routing entries — group agents by their effective model
+    const entries = agentModels ?? agents.map((a) => ({
+      name: a.name,
+      model: a.model,
+      isDefault: globalDefaultModel ? a.model === globalDefaultModel : false,
+    }));
+
+    // Group by model for a compact view
+    const byModel = new Map<string, { model: string; agents: string[]; hasDefault: boolean }>();
+    for (const entry of entries) {
+      const key = entry.model || "unknown";
+      const existing = byModel.get(key);
+      if (existing) {
+        existing.agents.push(entry.name);
+        if (entry.isDefault) existing.hasDefault = true;
+      } else {
+        byModel.set(key, {
+          model: key,
+          agents: [entry.name],
+          hasDefault: entry.isDefault,
+        });
+      }
+    }
+
+    const groups = Array.from(byModel.values()).sort((a, b) => b.agents.length - a.agents.length);
 
     return (
       <div className="space-y-3">
-        {/* Token usage breakdown */}
+        {/* Model routing overview */}
         <div className="rounded-lg border border-border bg-surface p-4">
-          {sessionsLoading ? (
+          {entries.length > 0 ? (
             <div className="space-y-3">
-              <div className="h-4 w-48 animate-pulse rounded bg-muted/30" />
-              <div className="h-3 w-32 animate-pulse rounded bg-muted/20" />
-            </div>
-          ) : hasSessions ? (
-            <div className="space-y-4">
-              {/* Header with totals */}
-              <div>
-                <p className="text-xs font-medium text-muted-foreground">Current Token Usage</p>
-                <div className="mt-1 flex items-baseline gap-3">
-                  <span className="font-mono text-2xl font-semibold text-foreground">
-                    {formatTokens(sessionSummary!.totalTokens)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    across {sessionSummary!.sessionCount} active session{sessionSummary!.sessionCount !== 1 ? "s" : ""}
-                  </span>
-                </div>
-                <div className="mt-1 flex gap-4 text-xs text-muted-foreground">
-                  <span>
-                    <span className="font-medium text-foreground/70">{formatTokens(sessionSummary!.totalInput)}</span> input
-                  </span>
-                  <span>
-                    <span className="font-medium text-foreground/70">{formatTokens(sessionSummary!.totalOutput)}</span> output
-                  </span>
-                </div>
+              <p className="text-xs font-medium text-muted-foreground">Your Model Routing</p>
+              <div className="space-y-2">
+                {groups.map((group) => {
+                  const rate = lookupRate(group.model);
+                  const agentCount = group.agents.length;
+                  return (
+                    <div key={group.model} className="flex items-start gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-foreground/90">
+                            {rate?.displayName ?? group.model.split("/").pop() ?? group.model}
+                          </span>
+                          {rate && (
+                            <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">
+                              {formatRate(rate.inputPerMillion, rate.outputPerMillion)}
+                            </span>
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground/70">
+                          {agentCount === 1 ? (
+                            <span className="capitalize">{group.agents[0]}</span>
+                          ) : agentCount <= 3 ? (
+                            group.agents.map((name, i) => (
+                              <span key={name}>
+                                {i > 0 && ", "}
+                                <span className="capitalize">{name}</span>
+                              </span>
+                            ))
+                          ) : (
+                            <span>{agentCount} agents</span>
+                          )}
+                          {group.hasDefault && agentCount > 0 && (
+                            <span className="text-muted-foreground/40"> · global default</span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="shrink-0 rounded-full bg-muted/30 px-2 py-0.5">
+                        <span className="font-mono text-[11px] font-medium text-muted-foreground">
+                          {agentCount}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-
-              {/* By-model breakdown */}
-              {sessionSummary!.byModel.length > 0 && (
-                <div>
-                  <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                    By Model
-                  </p>
-                  <div className="space-y-1.5">
-                    {sessionSummary!.byModel
-                      .sort((a, b) => b.totalTokens - a.totalTokens)
-                      .map((m) => {
-                        const rate = lookupRate(`${m.modelProvider}/${m.model}`);
-                        const pct = sessionSummary!.totalTokens > 0
-                          ? (m.totalTokens / sessionSummary!.totalTokens) * 100
-                          : 0;
-                        return (
-                          <div key={m.model} className="flex items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="truncate text-sm font-medium text-foreground/90">
-                                  {rate?.displayName ?? m.model}
-                                </span>
-                                <span className="shrink-0 text-[10px] text-muted-foreground/50">
-                                  {m.modelProvider}
-                                </span>
-                              </div>
-                              {/* Bar */}
-                              <div className="mt-0.5 h-1.5 w-full rounded-full bg-muted/20">
-                                <div
-                                  className="h-full rounded-full bg-primary/40"
-                                  style={{ width: `${Math.max(2, pct)}%` }}
-                                />
-                              </div>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <span className="font-mono text-xs font-medium text-foreground/80">
-                                {formatTokens(m.totalTokens)}
-                              </span>
-                              <span className="ml-1 font-mono text-[10px] text-muted-foreground/50">
-                                {pct.toFixed(0)}%
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-              )}
-
-              {/* By-agent breakdown */}
-              {sessionSummary!.byAgent.length > 1 && (
-                <div>
-                  <p className="mb-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                    By Agent
-                  </p>
-                  <div className="space-y-1.5">
-                    {sessionSummary!.byAgent
-                      .sort((a, b) => b.totalTokens - a.totalTokens)
-                      .map((a) => {
-                        const pct = sessionSummary!.totalTokens > 0
-                          ? (a.totalTokens / sessionSummary!.totalTokens) * 100
-                          : 0;
-                        return (
-                          <div key={a.agentId} className="flex items-center gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
-                                <span className="truncate text-sm font-medium text-foreground/90 capitalize">
-                                  {a.agentId}
-                                </span>
-                                <span className="shrink-0 text-[10px] text-muted-foreground/50">
-                                  {a.models.length} model{a.models.length !== 1 ? "s" : ""}
-                                </span>
-                              </div>
-                              <div className="mt-0.5 h-1.5 w-full rounded-full bg-muted/20">
-                                <div
-                                  className="h-full rounded-full bg-success/40"
-                                  style={{ width: `${Math.max(2, pct)}%` }}
-                                />
-                              </div>
-                            </div>
-                            <div className="shrink-0 text-right">
-                              <span className="font-mono text-xs font-medium text-foreground/80">
-                                {formatTokens(a.totalTokens)}
-                              </span>
-                              <span className="ml-1 font-mono text-[10px] text-muted-foreground/50">
-                                {pct.toFixed(0)}%
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                  </div>
-                </div>
-              )}
-
               <p className="text-[10px] text-muted-foreground/50">
-                Shows sessions currently running on the gateway — not historical usage · adjust the levers below to see estimated impact
+                Adjust model routing below to see estimated cost impact
               </p>
             </div>
           ) : (
