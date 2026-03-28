@@ -132,11 +132,19 @@ export class GatewayClient {
               const agent = a as Record<string, unknown>;
               const sessions = agent.sessions as Record<string, unknown> | undefined;
               const heartbeat = agent.heartbeat as Record<string, unknown> | undefined;
+              const modelObj = agent.model as Record<string, unknown> | undefined;
               const recent = sessions?.recent as unknown[] | undefined;
+
+              // Primary model: agent.model.primary > agent.model > heartbeat.model
+              const primaryModel =
+                String(modelObj?.primary ?? "") ||
+                String(agent.model ?? "") ||
+                String(heartbeat?.model ?? "unknown");
+
               return {
                 id: String(agent.agentId ?? ""),
                 name: String(agent.agentId ?? ""),
-                model: String(heartbeat?.model ?? "unknown"),
+                model: primaryModel,
                 status: (recent?.length ?? 0) > 0 ? "online" as const : "idle" as const,
                 sessionCount: Number(sessions?.count ?? 0),
                 tokenUsage: 0,
@@ -274,15 +282,17 @@ export class GatewayClient {
     // Find the default agent to extract settings
     const defaultAgent = agents.find((a) => a.isDefault) ?? agents[0];
     const heartbeat = defaultAgent?.heartbeat as Record<string, unknown> | undefined;
+    const defaultModelObj = defaultAgent?.model as Record<string, unknown> | undefined;
 
     const heartbeatModel = String(heartbeat?.model ?? "");
     const heartbeatEvery = String(heartbeat?.every ?? "30m");
 
-    // The snapshot doesn't expose agents.defaults.model.primary directly.
-    // Use the default agent's heartbeat model as the best available proxy.
-    // In most OpenClaw configs, the global default model matches the
-    // default agent's heartbeat model.
-    const primaryModel = heartbeatModel || undefined;
+    // Primary model: agent.model.primary > agent.model (if string) > heartbeat.model
+    const primaryModel =
+      String(defaultModelObj?.primary ?? "") ||
+      (typeof defaultAgent?.model === "string" ? String(defaultAgent.model) : "") ||
+      heartbeatModel ||
+      undefined;
 
     const config: OpenClawConfig = {
       agents: {
@@ -298,9 +308,14 @@ export class GatewayClient {
         },
         list: agents.map((a) => {
           const hb = a.heartbeat as Record<string, unknown> | undefined;
+          const mObj = a.model as Record<string, unknown> | undefined;
+          const agentPrimaryModel =
+            String(mObj?.primary ?? "") ||
+            (typeof a.model === "string" ? String(a.model) : "") ||
+            String(hb?.model ?? "");
           return {
             name: String(a.agentId ?? ""),
-            model: String(hb?.model ?? ""),
+            model: agentPrimaryModel,
             heartbeat: hb
               ? {
                   every: String(hb.every ?? ""),
