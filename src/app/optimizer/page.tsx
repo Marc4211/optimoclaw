@@ -651,8 +651,22 @@ export default function OptimizerPage() {
         </div>
       </div>
 
-      {/* ─── Cost & Model Routing (moves the number) ─── */}
-      <div className="rounded-xl border border-border bg-surface/50 p-5 space-y-4">
+      {/* ─── Model Routing ─── */}
+      <div className="space-y-4" data-section="model-routing">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold">Model Routing</h2>
+          <span className="font-mono text-xs font-medium text-muted-foreground">
+            {(() => {
+              const modelKeys = sections.find((s) => s.id === "model-routing")?.leverKeys ?? [];
+              const anyChanged = modelKeys.some((k) => Math.abs(leverCostDeltaPercents[k] ?? 0) > 0.5);
+              if (!anyChanged) return "";
+              const totalPercent = Math.round(overallPercentChange);
+              return `${totalPercent > 0 ? "+" : ""}${totalPercent}% token cost`;
+            })()}
+          </span>
+        </div>
+
+        {/* Your Model Routing overview + why no dollar figures */}
         <CostSummary
           percentChange={overallPercentChange}
           hasChanges={hasChanges}
@@ -660,18 +674,6 @@ export default function OptimizerPage() {
           globalDefaultModel={baseConfig.defaultModel as string}
           tokensByModel={tokensByModel}
         />
-
-        {/* Session insight charts — two-column on wide screens, stacked on narrow */}
-        {!hasChanges && (contextUtilization || cacheBreakdown) && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {contextUtilization && contextUtilization.sessions.length > 0 && (
-              <ContextUtilizationChart data={contextUtilization} />
-            )}
-            {cacheBreakdown && cacheBreakdown.tokenTotal > 0 && (
-              <CacheEfficiencyChart data={cacheBreakdown} />
-            )}
-          </div>
-        )}
 
         {/* Agent scope selector */}
         {connected && agents.length > 0 && (
@@ -682,57 +684,60 @@ export default function OptimizerPage() {
           />
         )}
 
-        {/* Model levers — these drive projected cost */}
-        <div data-section="model-routing">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Model Routing</h2>
-            <span className="font-mono text-xs font-medium text-muted-foreground">
-              {(() => {
-                const modelKeys = sections.find((s) => s.id === "model-routing")?.leverKeys ?? [];
-                const anyChanged = modelKeys.some((k) => Math.abs(leverCostDeltaPercents[k] ?? 0) > 0.5);
-                if (!anyChanged) return "—";
-                const totalPercent = Math.round(overallPercentChange);
-                return `${totalPercent > 0 ? "+" : ""}${totalPercent}% token cost`;
-              })()}
-            </span>
-          </div>
-          <div className="grid gap-3">
-            {(sections.find((s) => s.id === "model-routing")?.leverKeys ?? [])
-              .map((key) => levers.find((l) => l.key === key)!)
-              .filter(Boolean)
-              .map((lever) => (
-                <LeverCard
-                  key={lever.key}
-                  lever={lever}
-                  labelOverride={
-                    lever.key === "defaultModel" && selectedAgentId
-                      ? `${selectedAgentName}'s Model`
-                      : undefined
-                  }
-                  value={values[lever.key]}
-                  isModelLever={true}
-                  costDeltaPercent={leverCostDeltaPercents[lever.key]}
-                  inherited={inheritedLevers.has(lever.key)}
-                  tagOverride={lever.key === "compactionModel" && hasLosslessClaw ? "LosslessClaw feature" : undefined}
-                  disabled={lever.key === "compactionModel" && !hasLosslessClaw}
-                  disabledMessage={
-                    lever.key === "compactionModel" && !hasLosslessClaw
-                      ? "Requires LosslessClaw plugin for context compaction. Install it to control compaction costs and reduce token spend on long conversations."
-                      : undefined
-                  }
-                  modelOptions={availableModels}
-                  filteredOptions={getFilteredOptions(lever)}
-                  rationale={
-                    tuneMode ? tuneModes[tuneMode].rationale[lever.key] : undefined
-                  }
-                  onChange={handleChange}
-                />
-              ))}
-          </div>
+        {/* Model levers — Agent's Model, Heartbeat Model, Compaction Model */}
+        <div className="grid gap-3">
+          {(sections.find((s) => s.id === "model-routing")?.leverKeys ?? [])
+            .map((key) => levers.find((l) => l.key === key)!)
+            .filter(Boolean)
+            .map((lever) => (
+              <LeverCard
+                key={lever.key}
+                lever={lever}
+                labelOverride={
+                  lever.key === "defaultModel" && selectedAgentId
+                    ? `${selectedAgentName}'s Model`
+                    : undefined
+                }
+                value={values[lever.key]}
+                isModelLever={true}
+                costDeltaPercent={leverCostDeltaPercents[lever.key]}
+                inherited={inheritedLevers.has(lever.key)}
+                tagOverride={lever.key === "compactionModel" && hasLosslessClaw ? "LosslessClaw feature" : undefined}
+                disabled={lever.key === "compactionModel" && !hasLosslessClaw}
+                disabledMessage={
+                  lever.key === "compactionModel" && !hasLosslessClaw
+                    ? "Requires LosslessClaw plugin for context compaction. Install it to control compaction costs and reduce token spend on long conversations."
+                    : undefined
+                }
+                modelOptions={availableModels}
+                filteredOptions={getFilteredOptions(lever)}
+                rationale={
+                  tuneMode ? tuneModes[tuneMode].rationale[lever.key] : undefined
+                }
+                onChange={handleChange}
+              />
+            ))}
         </div>
       </div>
 
-      {/* ─── Performance Tuning (doesn't move the number) ─── */}
+      {/* ─── Session Insights — Context & Cache analysis ─── */}
+      {(contextUtilization?.sessions?.length ?? 0) > 0 || (cacheBreakdown?.tokenTotal ?? 0) > 0 ? (
+        <div className="mt-6 space-y-4" data-section="session-insights">
+          <h2 className="text-base font-semibold">Session Insights</h2>
+          <div className="rounded-xl border border-border bg-surface/50 p-5">
+            <div className="grid gap-4 sm:grid-cols-2">
+              {contextUtilization && contextUtilization.sessions.length > 0 && (
+                <ContextUtilizationChart data={contextUtilization} />
+              )}
+              {cacheBreakdown && cacheBreakdown.tokenTotal > 0 && (
+                <CacheEfficiencyChart data={cacheBreakdown} />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ─── Performance Tuning ─── */}
       <div className="mt-6 space-y-6">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold">Performance Tuning</h2>
