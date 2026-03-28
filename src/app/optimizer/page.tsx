@@ -221,13 +221,22 @@ export default function OptimizerPage() {
   }, [connected, client]);
 
   // Calculate real cost from session tokens × rate card
+  //
+  // OpenClaw sessions report: inputTokens (fresh input), outputTokens,
+  // and totalTokens (everything including cached/context reads).
+  // The gap (totalTokens - input - output) is cached input — context
+  // loaded into the model on each turn. We price it at the cached rate.
   const realTokenCost = useMemo(() => {
     if (!sessionSummary || sessionSummary.totalTokens === 0) return null;
 
     let totalCost = 0;
     for (const m of sessionSummary.byModel) {
+      // Fresh input + output are priced at standard rates.
+      // The remainder (totalTokens - input - output) is cached context.
+      const cachedInput = Math.max(0, m.totalTokens - m.inputTokens - m.outputTokens);
       const cost = calculateTokenCost(m.model, {
-        input: m.inputTokens,
+        input: m.inputTokens + cachedInput, // total input (fresh + cached)
+        cachedInput,                         // subset charged at discount
         output: m.outputTokens,
       });
       totalCost += cost.total;
@@ -675,11 +684,10 @@ export default function OptimizerPage() {
       <div className="rounded-xl border border-border bg-surface/50 p-5 space-y-4">
         <CostSummary
           actualCost={realTokenCost}
-          actualSource={realTokenCost !== null ? "gateway" : undefined}
           projectedCost={hasChanges ? projectedCost.total : (realTokenCost ?? projectedCost.total)}
           hasChanges={hasChanges}
           sessionSummary={sessionSummary}
-          sessionsLoading={sessionsLoading}
+          sessionsLoading={sessionsLoading && connected}
         />
 
         {/* Agent scope selector */}

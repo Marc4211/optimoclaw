@@ -52,24 +52,30 @@ export default function CostSummary({
       data-cost={displayCost.toFixed(2)}
     >
       <div className="flex flex-wrap items-center gap-6">
-        {/* Primary cost — from real tokens when available, theoretical estimate otherwise */}
+        {/* Primary cost — from real tokens when available */}
         <div>
           <p className="text-xs text-muted-foreground">
             {sessionsLoading
-              ? "Loading..."
+              ? "Loading token data..."
               : hasChanges
                 ? "Projected"
                 : hasActual
                   ? "Estimated Spend"
                   : "Estimated"}
           </p>
-          <p className="font-mono text-2xl font-semibold">
-            {formatCost(displayCost)}
-          </p>
+          {sessionsLoading ? (
+            <div className="h-8 w-24 animate-pulse rounded bg-muted/50 mt-1" />
+          ) : (
+            <p className="font-mono text-2xl font-semibold">
+              {formatCost(displayCost)}
+            </p>
+          )}
           <p className="text-[10px] text-muted-foreground/60">
-            {hasActual
-              ? "Real token usage \u00d7 published rates"
-              : "Config estimate \u00d7 published rates"}
+            {sessionsLoading
+              ? "Fetching from gateway..."
+              : hasActual
+                ? "Real token usage \u00d7 published rates"
+                : "Config estimate \u00d7 published rates"}
           </p>
         </div>
 
