@@ -14,10 +14,8 @@ import {
   calculateCost,
   calculateDiff,
   getFilteredOptions,
-  formatCost,
 } from "@/lib/optimizer";
 import { useGateway } from "@/contexts/GatewayContext";
-import { calculateTokenCost } from "@/lib/rate-card";
 import LeverCard from "@/components/optimizer/LeverCard";
 import CostSummary from "@/components/optimizer/CostSummary";
 import PresetSelector from "@/components/optimizer/PresetSelector";
@@ -179,71 +177,6 @@ export default function OptimizerPage() {
 
   const agentCount = connected && agents.length > 0 ? agents.length : 1;
 
-  // --- Real token usage from gateway sessions ---
-  interface SessionSummary {
-    totalInput: number;
-    totalOutput: number;
-    totalTokens: number;
-    sessionCount: number;
-    byModel: Array<{ model: string; inputTokens: number; outputTokens: number; totalTokens: number }>;
-    byAgent: Array<{ agentId: string; inputTokens: number; outputTokens: number; totalTokens: number; models: string[] }>;
-  }
-  const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
-  const [sessionsLoading, setSessionsLoading] = useState(false);
-
-  // Fetch real session token data from the gateway
-  useEffect(() => {
-    if (!connected || !client) return;
-    let cancelled = false;
-    setSessionsLoading(true);
-
-    const configPath = (client.snapshot?.configPath as string) ?? "";
-    const profileMatch = configPath.match(/\.openclaw-([^/]+)\//);
-    const profile = profileMatch ? profileMatch[1] : "";
-
-    fetch(`/api/sessions?profile=${encodeURIComponent(profile)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        if (cancelled) return;
-        if (data.summary) {
-          setSessionSummary(data.summary);
-          console.log("[Optimizer] Session token data:", data.summary);
-        }
-      })
-      .catch((err) => {
-        console.warn("[Optimizer] Failed to fetch session data:", err);
-      })
-      .finally(() => {
-        if (!cancelled) setSessionsLoading(false);
-      });
-
-    return () => { cancelled = true; };
-  }, [connected, client]);
-
-  // Calculate real cost from session tokens × rate card
-  //
-  // OpenClaw sessions report: inputTokens (fresh input), outputTokens,
-  // and totalTokens (everything including cached/context reads).
-  // The gap (totalTokens - input - output) is cached input — context
-  // loaded into the model on each turn. We price it at the cached rate.
-  const realTokenCost = useMemo(() => {
-    if (!sessionSummary || sessionSummary.totalTokens === 0) return null;
-
-    let totalCost = 0;
-    for (const m of sessionSummary.byModel) {
-      // Fresh input + output are priced at standard rates.
-      // The remainder (totalTokens - input - output) is cached context.
-      const cachedInput = Math.max(0, m.totalTokens - m.inputTokens - m.outputTokens);
-      const cost = calculateTokenCost(m.model, {
-        input: m.inputTokens + cachedInput, // total input (fresh + cached)
-        cachedInput,                         // subset charged at discount
-        output: m.outputTokens,
-      });
-      totalCost += cost.total;
-    }
-    return totalCost;
-  }, [sessionSummary]);
-
   // Default the agent selector to the default agent once agents load
   useEffect(() => {
     if (!agentInitialized && defaultAgentId && agents.length > 0) {
@@ -380,34 +313,13 @@ export default function OptimizerPage() {
     [agentCount]
   );
 
-  // Check if any model levers have changed
-  // Compare current values against the ORIGINAL config (what generated the Actual spend).
-  // This persists across Apply — after applying a cheaper model, the Projected still
-  // reflects the new expected cost vs the old Actual.
-  const modelLeverChangedFromOriginal = useMemo(() => {
-    if (!originalConfig) return false;
-    for (const key of MODEL_LEVER_KEYS) {
-      if (String(values[key as keyof LeverValue]) !== String(originalConfig[key as keyof LeverValue])) {
-        return true;
-      }
-    }
-    return false;
-  }, [values, originalConfig]);
-
-  // Also track changes from baseConfig (for the pending changes bar / diff)
-  const modelLeverChanged = useMemo(() => {
-    for (const key of MODEL_LEVER_KEYS) {
-      if (String(values[key as keyof LeverValue]) !== String(baseConfig[key as keyof LeverValue])) {
-        return true;
-      }
-    }
-    return false;
-  }, [values, baseConfig]);
-
-  // Estimated cost from rate card × config settings
-  const projectedCost = useMemo(() => {
-    return calculateCost(values, undefined, { agentCount });
-  }, [values, agentCount]);
+  // Overall percentage change from base config
+  const overallPercentChange = useMemo(() => {
+    const baseCost = calculateCost(baseConfig, undefined, costOptions).total;
+    const currentCost = calculateCost(values, undefined, costOptions).total;
+    if (baseCost === 0) return 0;
+    return ((currentCost - baseCost) / baseCost) * 100;
+  }, [values, baseConfig, costOptions]);
 
   const diffs = useMemo(
     () => calculateDiff(baseConfig, values),
@@ -464,21 +376,20 @@ export default function OptimizerPage() {
     return agents.find((a) => a.id === selectedAgentId)?.name ?? selectedAgentId;
   }, [selectedAgentId, agents]);
 
-  // Per-lever cost deltas — only for model levers, only when changed from base.
-  // Uses Admin API per-model spend × rate difference, not fabricated estimates.
-  const leverCostDeltas = useMemo(() => {
+  // Per-lever percentage deltas — only for model levers, only when changed from base.
+  // Shows relative impact: "switching from Sonnet to Haiku = -80%"
+  const leverCostDeltaPercents = useMemo(() => {
     const deltas: Record<string, number> = {};
+    const baseCost = calculateCost(baseConfig, undefined, costOptions).total;
     for (const lever of levers) {
       if (!MODEL_LEVER_KEYS.has(lever.key)) {
         deltas[lever.key] = 0;
         continue;
       }
       if (String(values[lever.key]) !== String(baseConfig[lever.key])) {
-        const withOriginal = { ...baseConfig };
         const withChanged = { ...baseConfig, [lever.key]: values[lever.key] };
-        const origCost = calculateCost(withOriginal, undefined, costOptions).total;
         const changedCost = calculateCost(withChanged, undefined, costOptions).total;
-        deltas[lever.key] = changedCost - origCost;
+        deltas[lever.key] = baseCost > 0 ? ((changedCost - baseCost) / baseCost) * 100 : 0;
       } else {
         deltas[lever.key] = 0;
       }
@@ -683,11 +594,8 @@ export default function OptimizerPage() {
       {/* ─── Cost & Model Routing (moves the number) ─── */}
       <div className="rounded-xl border border-border bg-surface/50 p-5 space-y-4">
         <CostSummary
-          actualCost={realTokenCost}
-          projectedCost={hasChanges ? projectedCost.total : (realTokenCost ?? projectedCost.total)}
+          percentChange={overallPercentChange}
           hasChanges={hasChanges}
-          sessionSummary={sessionSummary}
-          sessionsLoading={sessionsLoading && connected}
         />
 
         {/* Agent scope selector */}
@@ -706,9 +614,10 @@ export default function OptimizerPage() {
             <span className="font-mono text-xs font-medium text-muted-foreground">
               {(() => {
                 const modelKeys = sections.find((s) => s.id === "model-routing")?.leverKeys ?? [];
-                const sectionDelta = modelKeys.reduce((sum, k) => sum + (leverCostDeltas[k] ?? 0), 0);
-                if (Math.abs(sectionDelta) < 0.01) return "—";
-                return `${sectionDelta > 0 ? "+" : ""}${formatCost(sectionDelta)}/mo`;
+                const anyChanged = modelKeys.some((k) => Math.abs(leverCostDeltaPercents[k] ?? 0) > 0.5);
+                if (!anyChanged) return "—";
+                const totalPercent = Math.round(overallPercentChange);
+                return `${totalPercent > 0 ? "+" : ""}${totalPercent}% token cost`;
               })()}
             </span>
           </div>
@@ -727,7 +636,7 @@ export default function OptimizerPage() {
                   }
                   value={values[lever.key]}
                   isModelLever={true}
-                  costDelta={leverCostDeltas[lever.key]}
+                  costDeltaPercent={leverCostDeltaPercents[lever.key]}
                   inherited={inheritedLevers.has(lever.key)}
                   tagOverride={lever.key === "compactionModel" && hasLosslessClaw ? "LosslessClaw feature" : undefined}
                   disabled={lever.key === "compactionModel" && !hasLosslessClaw}
@@ -791,7 +700,7 @@ export default function OptimizerPage() {
                       lever={lever}
                       value={values[lever.key]}
                       isModelLever={false}
-                      costDelta={0}
+                      costDeltaPercent={0}
                       inherited={inheritedLevers.has(lever.key)}
                       filteredOptions={getFilteredOptions(lever)}
                       rationale={

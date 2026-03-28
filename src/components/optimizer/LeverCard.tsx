@@ -2,8 +2,6 @@
 
 import { LeverDefinition, LeverValue } from "@/types/optimizer";
 import { GatewayModel } from "@/types";
-import { formatCost } from "@/lib/optimizer";
-
 interface LeverCardProps {
   lever: LeverDefinition;
   /** Override the lever label (e.g. "[Agent]'s Model" instead of "Default Model") */
@@ -11,8 +9,8 @@ interface LeverCardProps {
   value: string | number;
   /** Whether this is a model selection lever (gets cost display) */
   isModelLever: boolean;
-  /** Delta from base config — only meaningful for model levers when changed */
-  costDelta: number;
+  /** Percentage change from base config — only meaningful for model levers when changed */
+  costDeltaPercent: number;
   /** True when this lever value is inherited from global defaults (no per-agent override) */
   inherited?: boolean;
   /** Custom tag to show instead of "using global default" (e.g. "LosslessClaw feature") */
@@ -32,7 +30,7 @@ export default function LeverCard({
   labelOverride,
   value,
   isModelLever,
-  costDelta,
+  costDeltaPercent,
   inherited,
   tagOverride,
   disabled,
@@ -43,7 +41,7 @@ export default function LeverCard({
   onChange,
 }: LeverCardProps) {
   const options = filteredOptions ?? lever.options;
-  const hasChanged = isModelLever && Math.abs(costDelta) > 0.01;
+  const hasChanged = isModelLever && Math.abs(costDeltaPercent) > 0.5;
 
   // For model levers with gateway models: use a dropdown
   const useModelDropdown = !disabled && isModelLever && modelOptions && modelOptions.length > 0;
@@ -53,7 +51,7 @@ export default function LeverCard({
       className={`rounded-lg border border-border bg-surface p-5 ${disabled ? "opacity-50" : ""}`}
       data-lever={lever.key}
       data-value={disabled ? "disabled" : String(value)}
-      data-cost-delta={hasChanged ? costDelta.toFixed(2) : null}
+      data-cost-delta={hasChanged ? costDeltaPercent.toFixed(0) : null}
     >
       <div className="mb-3 flex items-start justify-between">
         <div className="flex-1">
@@ -76,11 +74,11 @@ export default function LeverCard({
           {hasChanged ? (
             <span
               className={`font-mono text-sm font-medium ${
-                costDelta < -0.01 ? "text-success" : "text-danger"
+                costDeltaPercent < -0.5 ? "text-success" : "text-danger"
               }`}
             >
-              {costDelta > 0 ? "+" : ""}
-              {formatCost(costDelta)}/mo
+              {costDeltaPercent > 0 ? "+" : ""}
+              {costDeltaPercent.toFixed(0)}%
             </span>
           ) : (
             <span className="font-mono text-sm font-medium text-muted-foreground">
