@@ -129,7 +129,17 @@ export default function ContextUtilizationChart({ data }: Props) {
   }[insight.color];
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
+    <div
+      className="rounded-lg border border-border bg-surface p-4"
+      data-section="context-utilization"
+      data-avg-percent-used={data.avgPercentUsed.toFixed(1)}
+      data-session-count={data.sessions.length}
+      data-total-context-available={data.totalContextAvailable}
+      data-total-context-used={data.totalContextUsed}
+      data-status={insight.label.toLowerCase().replace(/\s+/g, "-")}
+      data-insight={insight.detail}
+      aria-label={`Context utilization: ${data.avgPercentUsed.toFixed(0)}% average across ${data.sessions.length} sessions. ${insight.label}: ${insight.detail}`}
+    >
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-muted-foreground">
           Context Utilization
@@ -141,9 +151,18 @@ export default function ContextUtilizationChart({ data }: Props) {
       </div>
 
       {/* Per-session bars */}
-      <div className="mt-3 space-y-2">
+      <div className="mt-3 space-y-2" data-list="context-sessions">
         {sorted.map((session) => (
-          <div key={session.agentId + session.kind}>
+          <div
+            key={session.agentId + session.kind}
+            data-agent={session.agentId}
+            data-model={session.model}
+            data-kind={session.kind}
+            data-tokens-used={session.totalTokens}
+            data-context-window={session.contextTokens}
+            data-percent-used={session.percentUsed}
+            aria-label={`${session.agentId} ${session.kind}: ${formatTokens(session.totalTokens)} of ${formatWindow(session.contextTokens)} context (${session.percentUsed}% used)`}
+          >
             <div className="flex items-center justify-between text-[11px]">
               <span className="capitalize text-foreground/80">
                 {session.agentId}

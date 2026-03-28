@@ -102,16 +102,34 @@ export default function CostSummary({
     return (
       <div className="space-y-3">
         {/* Model routing overview */}
-        <div className="rounded-lg border border-border bg-surface p-4">
+        <div
+          className="rounded-lg border border-border bg-surface p-4"
+          data-section="model-routing"
+          data-model-count={groups.length}
+          data-agent-count={entries.length}
+          aria-label={`Model routing: ${groups.length} models across ${entries.length} agents`}
+        >
           {entries.length > 0 ? (
             <div className="space-y-3">
               <p className="text-xs font-medium text-muted-foreground">Your Model Routing</p>
-              <div className="space-y-2">
+              <div className="space-y-2" data-list="model-routes">
                 {groups.map((group) => {
                   const rate = lookupRate(group.model);
                   const agentCount = group.agents.length;
                   return (
-                    <div key={group.model} className="flex items-start gap-3">
+                    <div
+                      key={group.model}
+                      className="flex items-start gap-3"
+                      data-model={group.model}
+                      data-model-display={rate?.displayName ?? group.model}
+                      data-agents={group.agents.join(",")}
+                      data-agent-count={agentCount}
+                      data-tokens={group.tokens}
+                      data-is-default={group.hasDefault}
+                      data-input-cost-per-mtok={rate?.inputPerMillion ?? "unknown"}
+                      data-output-cost-per-mtok={rate?.outputPerMillion ?? "unknown"}
+                      aria-label={`${rate?.displayName ?? group.model}: ${agentCount} agent${agentCount !== 1 ? "s" : ""}, ${group.tokens > 0 ? formatTokens(group.tokens) + " tokens" : "no token data"}${group.hasDefault ? ", global default" : ""}`}
+                    >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="text-sm font-medium text-foreground/90">
@@ -212,8 +230,15 @@ export default function CostSummary({
   }
 
   // --- Changes pending: show percentage impact ---
+  const direction = isDown ? "decrease" : isUp ? "increase" : "neutral";
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
+    <div
+      className="rounded-lg border border-border bg-surface p-4"
+      data-section="cost-impact"
+      data-percent-change={percentChange.toFixed(1)}
+      data-direction={direction}
+      aria-label={`Estimated token cost impact: ${Math.abs(percentChange) < 0.5 ? "no significant change" : `${percentChange > 0 ? "+" : ""}${percentChange.toFixed(0)}% ${direction}`}`}
+    >
       <div className="flex items-center gap-4">
         <div>
           <p className="text-xs text-muted-foreground">Estimated Token Cost Impact</p>

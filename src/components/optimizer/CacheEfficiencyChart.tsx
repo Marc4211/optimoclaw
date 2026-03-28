@@ -156,7 +156,22 @@ export default function CacheEfficiencyChart({ data }: Props) {
   }[insight.color];
 
   return (
-    <div className="rounded-lg border border-border bg-surface p-4">
+    <div
+      className="rounded-lg border border-border bg-surface p-4"
+      data-section="cache-efficiency"
+      data-cache-read-percent={data.cacheReadPercent.toFixed(1)}
+      data-cache-write-percent={data.cacheWritePercent.toFixed(1)}
+      data-fresh-input-percent={data.freshInputPercent.toFixed(1)}
+      data-output-percent={data.outputPercent.toFixed(1)}
+      data-total-cache-read={data.totalCacheRead}
+      data-total-cache-write={data.totalCacheWrite}
+      data-total-input={data.totalInput}
+      data-total-output={data.totalOutput}
+      data-token-total={data.tokenTotal}
+      data-status={insight.label.toLowerCase().replace(/\s+/g, "-")}
+      data-insight={insight.detail}
+      aria-label={`Cache efficiency: ${data.cacheReadPercent.toFixed(0)}% cache reads, ${data.cacheWritePercent.toFixed(0)}% cache writes, ${data.freshInputPercent.toFixed(0)}% fresh input, ${data.outputPercent.toFixed(0)}% output. ${insight.label}: ${insight.detail}`}
+    >
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-muted-foreground">
           Cache Efficiency
@@ -180,9 +195,17 @@ export default function CacheEfficiencyChart({ data }: Props) {
       </div>
 
       {/* Legend */}
-      <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5">
+      <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5" data-list="cache-segments">
         {segments.map((seg) => (
-          <div key={seg.key} className="flex items-center gap-2">
+          <div
+            key={seg.key}
+            className="flex items-center gap-2"
+            data-token-type={seg.key}
+            data-tokens={seg.tokens}
+            data-percent={seg.percent.toFixed(1)}
+            data-cost-multiplier={seg.multiplier}
+            aria-label={`${seg.label}: ${formatTokens(seg.tokens)} tokens (${seg.percent.toFixed(1)}%), ${seg.multiplier}`}
+          >
             <div className={`h-2 w-2 shrink-0 rounded-sm ${seg.color}`} />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-1">
