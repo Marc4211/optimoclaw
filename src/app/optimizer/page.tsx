@@ -17,7 +17,7 @@ import {
 } from "@/lib/optimizer";
 import { useGateway } from "@/contexts/GatewayContext";
 import LeverCard from "@/components/optimizer/LeverCard";
-import CostSummary from "@/components/optimizer/CostSummary";
+import CostSummary, { ModelTokenUsage } from "@/components/optimizer/CostSummary";
 import PresetSelector from "@/components/optimizer/PresetSelector";
 import AgentSelector from "@/components/optimizer/AgentSelector";
 import DiffPreview from "@/components/optimizer/DiffPreview";
@@ -174,6 +174,7 @@ export default function OptimizerPage() {
   const [agentInitialized, setAgentInitialized] = useState(false);
   const [inheritedLevers, setInheritedLevers] = useState<Set<string>>(new Set());
   const [lastConfig, setLastConfig] = useState<OpenClawConfig | null>(null);
+  const [tokensByModel, setTokensByModel] = useState<ModelTokenUsage[]>([]);
 
   const agentCount = connected && agents.length > 0 ? agents.length : 1;
 
@@ -285,6 +286,34 @@ export default function OptimizerPage() {
     return () => {
       cancelled = true;
     };
+  }, [connected, client]);
+
+  // Fetch session token data for model usage sorting
+  useEffect(() => {
+    if (!connected || !client) return;
+
+    let cancelled = false;
+    const configPath = (client.snapshot?.configPath as string) ?? "";
+    const profileMatch = configPath.match(/\.openclaw-([^/]+)\//);
+    const profile = profileMatch ? profileMatch[1] : "";
+
+    fetch(`/api/sessions?profile=${encodeURIComponent(profile)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data.summary?.byModel) return;
+        setTokensByModel(
+          data.summary.byModel.map((m: { model: string; totalTokens: number; sessionCount: number }) => ({
+            model: m.model,
+            totalTokens: m.totalTokens,
+            sessionCount: m.sessionCount,
+          }))
+        );
+      })
+      .catch(() => {
+        // Non-critical — sort falls back to cost tier
+      });
+
+    return () => { cancelled = true; };
   }, [connected, client]);
 
   // Re-extract lever values when selectedAgentId or lastConfig changes
@@ -598,6 +627,7 @@ export default function OptimizerPage() {
           hasChanges={hasChanges}
           agents={agents}
           globalDefaultModel={baseConfig.defaultModel as string}
+          tokensByModel={tokensByModel}
         />
 
         {/* Agent scope selector */}

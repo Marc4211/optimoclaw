@@ -5,11 +5,11 @@ import { TrendingDown, TrendingUp, Minus, ChevronDown, Info } from "lucide-react
 import { lookupRate } from "@/lib/rate-card";
 import { Agent } from "@/types";
 
-/** Per-agent model assignment for the routing overview */
-export interface AgentModelEntry {
-  name: string;
+/** Token usage aggregated by model — from the sessions API */
+export interface ModelTokenUsage {
   model: string;
-  isDefault: boolean; // true = using global default, no per-agent override
+  totalTokens: number;
+  sessionCount: number;
 }
 
 interface CostSummaryProps {
@@ -20,12 +20,18 @@ interface CostSummaryProps {
   agents: Agent[];
   /** The global default model string */
   globalDefaultModel?: string;
-  /** Per-agent model entries (with inherited flag) — if not provided, derived from agents */
-  agentModels?: AgentModelEntry[];
+  /** Token usage by model for sorting — most-used model first */
+  tokensByModel?: ModelTokenUsage[];
 }
 
 function formatRate(input: number, output: number): string {
   return `$${input}/$${output} per MTok`;
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
 }
 
 export default function CostSummary({
@@ -33,7 +39,7 @@ export default function CostSummary({
   hasChanges,
   agents,
   globalDefaultModel,
-  agentModels,
+  tokensByModel,
 }: CostSummaryProps) {
   const isUp = percentChange > 0.5;
   const isDown = percentChange < -0.5;
@@ -42,14 +48,22 @@ export default function CostSummary({
   // --- No changes state: show model routing overview + explainer ---
   if (!hasChanges) {
     // Build model routing entries — group agents by their effective model
-    const entries = agentModels ?? agents.map((a) => ({
+    const entries = agents.map((a) => ({
       name: a.name,
       model: a.model,
       isDefault: globalDefaultModel ? a.model === globalDefaultModel : false,
     }));
 
+    // Build a token usage lookup from session data (model string → total tokens)
+    const tokenLookup = new Map<string, number>();
+    if (tokensByModel) {
+      for (const m of tokensByModel) {
+        tokenLookup.set(m.model, m.totalTokens);
+      }
+    }
+
     // Group by model for a compact view
-    const byModel = new Map<string, { model: string; agents: string[]; hasDefault: boolean }>();
+    const byModel = new Map<string, { model: string; agents: string[]; hasDefault: boolean; tokens: number }>();
     for (const entry of entries) {
       const key = entry.model || "unknown";
       const existing = byModel.get(key);
@@ -57,22 +71,32 @@ export default function CostSummary({
         existing.agents.push(entry.name);
         if (entry.isDefault) existing.hasDefault = true;
       } else {
+        // Match token data — try exact match, then substring match
+        let tokens = tokenLookup.get(key) ?? 0;
+        if (tokens === 0) {
+          for (const [tModel, tTokens] of tokenLookup) {
+            if (key.includes(tModel) || tModel.includes(key)) {
+              tokens = tTokens;
+              break;
+            }
+          }
+        }
         byModel.set(key, {
           model: key,
           agents: [entry.name],
           hasDefault: entry.isDefault,
+          tokens,
         });
       }
     }
 
-    // Sort by output cost tier (most expensive first) — puts the models that
-    // matter most for optimization at the top
+    // Sort by token usage (most tokens first). Fall back to cost tier if no usage data.
+    const hasTokenData = Array.from(byModel.values()).some((g) => g.tokens > 0);
     const groups = Array.from(byModel.values()).sort((a, b) => {
+      if (hasTokenData) return b.tokens - a.tokens;
       const rateA = lookupRate(a.model);
       const rateB = lookupRate(b.model);
-      const costA = rateA?.outputPerMillion ?? 0;
-      const costB = rateB?.outputPerMillion ?? 0;
-      return costB - costA;
+      return (rateB?.outputPerMillion ?? 0) - (rateA?.outputPerMillion ?? 0);
     });
 
     return (
@@ -117,10 +141,16 @@ export default function CostSummary({
                           )}
                         </p>
                       </div>
-                      <div className="shrink-0 rounded-full bg-muted/30 px-2 py-0.5">
-                        <span className="font-mono text-[11px] font-medium text-muted-foreground">
-                          {agentCount}
-                        </span>
+                      <div className="shrink-0 text-right">
+                        {group.tokens > 0 ? (
+                          <span className="font-mono text-xs font-medium text-foreground/70">
+                            {formatTokens(group.tokens)}
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-muted/30 px-2 py-0.5 font-mono text-[11px] font-medium text-muted-foreground">
+                            {agentCount}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );

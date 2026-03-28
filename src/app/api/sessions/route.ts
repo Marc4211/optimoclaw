@@ -7,31 +7,19 @@ const execAsync = promisify(exec);
 /**
  * GET /api/sessions?profile=digantic
  *
- * Runs `openclaw sessions --all-agents --json` to get per-session token usage.
+ * Runs `openclaw status --usage --json` to get per-session token usage.
+ * This returns richer data than `sessions --all-agents --json`, including
+ * cacheRead/cacheWrite breakdowns and per-session model assignments.
  *
- * OpenClaw output format:
- * {
- *   "sessions": [
- *     {
- *       "key": "agent:gretta:main",
- *       "inputTokens": 12,
- *       "outputTokens": 1355,
- *       "totalTokens": 89788,
- *       "model": "claude-sonnet-4-6",
- *       "modelProvider": "anthropic",
- *       ...
- *     }
- *   ],
- *   "stores": [ { "agentId": "gretta", "path": "..." } ],
- *   "count": 4
- * }
+ * Returns a summary with tokens aggregated by model, suitable for sorting
+ * the model routing display by actual usage.
  */
 export async function GET(request: NextRequest) {
   try {
     const profile = request.nextUrl.searchParams.get("profile") ?? "";
     const profileFlag = profile ? `--profile '${profile}'` : "";
 
-    const cmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} sessions --all-agents --json 2>/dev/null`;
+    const cmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} status --usage --json 2>/dev/null`;
     const { stdout } = await execAsync(cmd, { timeout: 30000, shell: "/bin/zsh" });
 
     // Extract the JSON object from the output (may have banner/plugin logs before it)
@@ -39,9 +27,8 @@ export async function GET(request: NextRequest) {
     if (!jsonMatch) {
       return NextResponse.json({
         sessions: [],
-        summary: { totalInput: 0, totalOutput: 0, totalTokens: 0, sessionCount: 0, byModel: [], byAgent: [] },
-        error: "No JSON found in sessions output",
-        raw: stdout.slice(0, 500),
+        summary: emptySummary(),
+        error: "No JSON found in status output",
       });
     }
 
@@ -51,14 +38,14 @@ export async function GET(request: NextRequest) {
     } catch (e) {
       return NextResponse.json({
         sessions: [],
-        summary: { totalInput: 0, totalOutput: 0, totalTokens: 0, sessionCount: 0, byModel: [], byAgent: [] },
-        error: `Failed to parse sessions JSON: ${e instanceof Error ? e.message : "unknown"}`,
-        raw: jsonMatch[0].slice(0, 500),
+        summary: emptySummary(),
+        error: `Failed to parse status JSON: ${e instanceof Error ? e.message : "unknown"}`,
       });
     }
 
-    // Sessions are inside parsed.sessions[]
-    const rawSessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
+    // Sessions live at parsed.sessions.recent[]
+    const sessionsObj = parsed.sessions as Record<string, unknown> | undefined;
+    const rawSessions = Array.isArray(sessionsObj?.recent) ? sessionsObj.recent : [];
 
     const sessions: SessionData[] = [];
 
@@ -68,70 +55,73 @@ export async function GET(request: NextRequest) {
 
       const inputTokens = Number(s.inputTokens ?? 0);
       const outputTokens = Number(s.outputTokens ?? 0);
-      const totalTokens = Number(s.totalTokens ?? inputTokens + outputTokens);
+      const cacheRead = Number(s.cacheRead ?? 0);
+      const cacheWrite = Number(s.cacheWrite ?? 0);
+      const totalTokens = Number(s.totalTokens ?? 0);
       const model = String(s.model ?? "unknown");
-      const modelProvider = String(s.modelProvider ?? "unknown");
-      const sessionId = String(s.sessionId ?? s.id ?? "");
+      const agentId = String(s.agentId ?? "unknown");
+      const sessionId = String(s.sessionId ?? "");
+      const totalTokensFresh = Boolean(s.totalTokensFresh);
 
-      // Extract agentId from session key "agent:gretta:main" → "gretta"
-      const key = String(s.key ?? "");
-      const keyParts = key.split(":");
-      const agentId = keyParts.length >= 2 ? keyParts[1] : String(s.agentId ?? "unknown");
+      // Skip sessions with no token data (stale/unfresh)
+      if (!totalTokensFresh && totalTokens === 0) continue;
 
       sessions.push({
         sessionId,
         agentId,
         model,
-        modelProvider,
         inputTokens,
         outputTokens,
+        cacheRead,
+        cacheWrite,
         totalTokens,
       });
     }
 
     // Build summary aggregations
-    const byModel = new Map<string, { model: string; modelProvider: string; inputTokens: number; outputTokens: number; totalTokens: number }>();
-    const byAgent = new Map<string, { agentId: string; inputTokens: number; outputTokens: number; totalTokens: number; models: Set<string> }>();
+    const byModel = new Map<
+      string,
+      {
+        model: string;
+        inputTokens: number;
+        outputTokens: number;
+        cacheRead: number;
+        cacheWrite: number;
+        totalTokens: number;
+        sessionCount: number;
+      }
+    >();
 
     let totalInput = 0;
     let totalOutput = 0;
+    let totalCacheRead = 0;
+    let totalCacheWrite = 0;
     let totalTokens = 0;
 
     for (const s of sessions) {
       totalInput += s.inputTokens;
       totalOutput += s.outputTokens;
+      totalCacheRead += s.cacheRead;
+      totalCacheWrite += s.cacheWrite;
       totalTokens += s.totalTokens;
 
-      // By model
       const existing = byModel.get(s.model);
       if (existing) {
         existing.inputTokens += s.inputTokens;
         existing.outputTokens += s.outputTokens;
+        existing.cacheRead += s.cacheRead;
+        existing.cacheWrite += s.cacheWrite;
         existing.totalTokens += s.totalTokens;
+        existing.sessionCount += 1;
       } else {
         byModel.set(s.model, {
           model: s.model,
-          modelProvider: s.modelProvider,
           inputTokens: s.inputTokens,
           outputTokens: s.outputTokens,
+          cacheRead: s.cacheRead,
+          cacheWrite: s.cacheWrite,
           totalTokens: s.totalTokens,
-        });
-      }
-
-      // By agent
-      const agentEntry = byAgent.get(s.agentId);
-      if (agentEntry) {
-        agentEntry.inputTokens += s.inputTokens;
-        agentEntry.outputTokens += s.outputTokens;
-        agentEntry.totalTokens += s.totalTokens;
-        agentEntry.models.add(s.model);
-      } else {
-        byAgent.set(s.agentId, {
-          agentId: s.agentId,
-          inputTokens: s.inputTokens,
-          outputTokens: s.outputTokens,
-          totalTokens: s.totalTokens,
-          models: new Set([s.model]),
+          sessionCount: 1,
         });
       }
     }
@@ -141,27 +131,38 @@ export async function GET(request: NextRequest) {
       summary: {
         totalInput,
         totalOutput,
+        totalCacheRead,
+        totalCacheWrite,
         totalTokens,
         sessionCount: sessions.length,
         byModel: Array.from(byModel.values()),
-        byAgent: Array.from(byAgent.values()).map((a) => ({
-          ...a,
-          models: Array.from(a.models),
-        })),
       },
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "Failed to read sessions";
-    return NextResponse.json({ error: msg, sessions: [], summary: null }, { status: 500 });
+    const msg = err instanceof Error ? err.message : "Failed to read status";
+    return NextResponse.json({ error: msg, sessions: [], summary: emptySummary() }, { status: 500 });
   }
+}
+
+function emptySummary() {
+  return {
+    totalInput: 0,
+    totalOutput: 0,
+    totalCacheRead: 0,
+    totalCacheWrite: 0,
+    totalTokens: 0,
+    sessionCount: 0,
+    byModel: [],
+  };
 }
 
 interface SessionData {
   sessionId: string;
   agentId: string;
   model: string;
-  modelProvider: string;
   inputTokens: number;
   outputTokens: number;
+  cacheRead: number;
+  cacheWrite: number;
   totalTokens: number;
 }
