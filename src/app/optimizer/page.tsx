@@ -16,7 +16,7 @@ import {
   getFilteredOptions,
   formatCost,
 } from "@/lib/optimizer";
-import { useRates } from "@/contexts/RatesContext";
+// Rate card (baked-in published prices) is the primary cost source — no billing APIs needed
 import { useGateway } from "@/contexts/GatewayContext";
 import LeverCard from "@/components/optimizer/LeverCard";
 import CostSummary from "@/components/optimizer/CostSummary";
@@ -25,7 +25,7 @@ import AgentSelector from "@/components/optimizer/AgentSelector";
 import DiffPreview from "@/components/optimizer/DiffPreview";
 import { RolloutTarget } from "@/components/optimizer/DiffPreview";
 import StickyApplyBar from "@/components/optimizer/StickyApplyBar";
-import RateSetupCard from "@/components/rates/RateSetupCard";
+// Billing API setup removed — rate card provides estimates without any API keys
 
 // --- Config extraction helpers ---
 
@@ -140,7 +140,8 @@ const MODEL_LEVER_KEYS = new Set(["defaultModel", "heartbeatModel", "compactionM
 // --- Page component ---
 
 export default function OptimizerPage() {
-  const { hasRates, loaded, models, config: ratesConfig } = useRates();
+  const [loaded, setPageLoaded] = useState(false);
+  useEffect(() => { setPageLoaded(true); }, []);
   const { client, connected, activeGateway, agents, availableModels } = useGateway();
   const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...fallbackDefaults });
   // originalConfig: the config that generated the Actual spend — persisted to localStorage
@@ -165,7 +166,7 @@ export default function OptimizerPage() {
   const [loadingConfig, setLoadingConfig] = useState(false);
   const [tuneMode, setTuneMode] = useState<TuneMode | null>(null);
   const [hasLosslessClaw, setHasLosslessClaw] = useState(false);
-  const [showBillingSetup, setShowBillingSetup] = useState(false);
+  // Billing setup removed — rate card is the primary cost source
   const [showTuneChooser, setShowTuneChooser] = useState(false);
   // Default to the default agent (isDefault: true from snapshot), not "Global defaults"
   const defaultAgentId = agents.find((a) => a.id === (client?.snapshot?.sessionDefaults as Record<string, unknown>)?.defaultAgentId)?.id
@@ -176,12 +177,7 @@ export default function OptimizerPage() {
   const [inheritedLevers, setInheritedLevers] = useState<Set<string>>(new Set());
   const [lastConfig, setLastConfig] = useState<OpenClawConfig | null>(null);
 
-  const adminApiMonthly = ratesConfig?.realSpend?.monthlyEstimate ?? 0;
-  const perModelUsage = ratesConfig?.realSpend?.perModel;
   const agentCount = connected && agents.length > 0 ? agents.length : 1;
-
-  // The actual baseline: from Admin API real spend data only
-  const realBaselineMonthly = adminApiMonthly;
 
   // Default the agent selector to the default agent once agents load
   useEffect(() => {
@@ -313,13 +309,10 @@ export default function OptimizerPage() {
     }
   }, [lastConfig, selectedAgentId]);
 
-  // Cost calculation options — anchored to real spend when available
+  // Cost calculation options — uses rate card pricing × config settings
   const costOptions = useMemo(
-    () =>
-      realBaselineMonthly > 0
-        ? { agentCount, realBaselineMonthly, baseValues: baseConfig, perModel: perModelUsage }
-        : { agentCount },
-    [agentCount, realBaselineMonthly, baseConfig, perModelUsage]
+    () => ({ agentCount }),
+    [agentCount]
   );
 
   // Check if any model levers have changed
@@ -346,23 +339,10 @@ export default function OptimizerPage() {
     return false;
   }, [values, baseConfig]);
 
-  // Projected cost: when models differ from what generated the Actual spend,
-  // use the scale factor approach (Actual × newCost/originalCost).
-  // This stays accurate even after Apply — showing the ongoing savings/increase.
-  const projectedCostOptions = useMemo(
-    () =>
-      realBaselineMonthly > 0 && originalConfig
-        ? { agentCount, realBaselineMonthly, baseValues: originalConfig, perModel: perModelUsage }
-        : { agentCount },
-    [agentCount, realBaselineMonthly, originalConfig, perModelUsage]
-  );
-
+  // Estimated cost from rate card × config settings
   const projectedCost = useMemo(() => {
-    if (!modelLeverChangedFromOriginal && realBaselineMonthly > 0) {
-      return { monthlyInput: 0, monthlyOutput: 0, total: realBaselineMonthly };
-    }
-    return calculateCost(values, hasRates ? models : undefined, projectedCostOptions);
-  }, [values, hasRates, models, projectedCostOptions, modelLeverChangedFromOriginal, realBaselineMonthly]);
+    return calculateCost(values, undefined, { agentCount });
+  }, [values, agentCount]);
 
   const diffs = useMemo(
     () => calculateDiff(baseConfig, values),
@@ -422,7 +402,6 @@ export default function OptimizerPage() {
   // Per-lever cost deltas — only for model levers, only when changed from base.
   // Uses Admin API per-model spend × rate difference, not fabricated estimates.
   const leverCostDeltas = useMemo(() => {
-    const rates = hasRates ? models : undefined;
     const deltas: Record<string, number> = {};
     for (const lever of levers) {
       if (!MODEL_LEVER_KEYS.has(lever.key)) {
@@ -432,15 +411,15 @@ export default function OptimizerPage() {
       if (String(values[lever.key]) !== String(baseConfig[lever.key])) {
         const withOriginal = { ...baseConfig };
         const withChanged = { ...baseConfig, [lever.key]: values[lever.key] };
-        const origCost = calculateCost(withOriginal, rates, costOptions).total;
-        const changedCost = calculateCost(withChanged, rates, costOptions).total;
+        const origCost = calculateCost(withOriginal, undefined, costOptions).total;
+        const changedCost = calculateCost(withChanged, undefined, costOptions).total;
         deltas[lever.key] = changedCost - origCost;
       } else {
         deltas[lever.key] = 0;
       }
     }
     return deltas;
-  }, [values, baseConfig, hasRates, models, costOptions]);
+  }, [values, baseConfig, costOptions]);
 
   // Visible sections/levers based on tune mode
   const visibleLeverKeys = useMemo(() => {
@@ -571,9 +550,6 @@ export default function OptimizerPage() {
   }
 
   if (!loaded) return null;
-  // Billing setup is optional — rate card provides estimates without any API keys.
-  // Only show when user explicitly clicks "Connect billing" from the manage link.
-  if (showBillingSetup) return <RateSetupCard onClose={() => setShowBillingSetup(false)} />;
 
   return (
     <div className="p-8" data-page="optimizer">
@@ -586,11 +562,6 @@ export default function OptimizerPage() {
               {connected
                 ? `Reading live config from ${activeGateway?.name ?? "your gateway"}`
                 : "Using default settings. Connect a gateway for live config."}
-              {adminApiMonthly > 0 ? (
-                <> &middot; ${adminApiMonthly.toFixed(0)}/mo actual (last 30 days)</>
-              ) : (
-                <> &middot; <button onClick={() => setShowBillingSetup(true)} className="text-primary hover:text-primary/80 transition-colors">Connect billing</button> to compare against your actual bill</>
-              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -647,11 +618,9 @@ export default function OptimizerPage() {
       {/* ─── Cost & Model Routing (moves the number) ─── */}
       <div className="rounded-xl border border-border bg-surface/50 p-5 space-y-4">
         <CostSummary
-          actualCost={realBaselineMonthly > 0 ? realBaselineMonthly : null}
-          actualSource={adminApiMonthly > 0 ? "admin-api" : undefined}
+          actualCost={null}
           projectedCost={projectedCost.total}
-          hasChanges={hasChanges || modelLeverChangedFromOriginal}
-          providerSpend={ratesConfig?.providerSpend}
+          hasChanges={hasChanges}
         />
 
         {/* Agent scope selector */}
