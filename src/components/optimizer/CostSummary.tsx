@@ -65,7 +65,15 @@ export default function CostSummary({
       }
     }
 
-    const groups = Array.from(byModel.values()).sort((a, b) => b.agents.length - a.agents.length);
+    // Sort by output cost tier (most expensive first) — puts the models that
+    // matter most for optimization at the top
+    const groups = Array.from(byModel.values()).sort((a, b) => {
+      const rateA = lookupRate(a.model);
+      const rateB = lookupRate(b.model);
+      const costA = rateA?.outputPerMillion ?? 0;
+      const costB = rateB?.outputPerMillion ?? 0;
+      return costB - costA;
+    });
 
     return (
       <div className="space-y-3">
