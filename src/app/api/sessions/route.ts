@@ -8,7 +8,23 @@ const execAsync = promisify(exec);
  * GET /api/sessions?profile=digantic
  *
  * Runs `openclaw sessions --all-agents --json` to get per-session token usage.
- * Returns parsed session data with per-agent, per-model token breakdowns.
+ *
+ * OpenClaw output format:
+ * {
+ *   "sessions": [
+ *     {
+ *       "key": "agent:gretta:main",
+ *       "inputTokens": 12,
+ *       "outputTokens": 1355,
+ *       "totalTokens": 89788,
+ *       "model": "claude-sonnet-4-6",
+ *       "modelProvider": "anthropic",
+ *       ...
+ *     }
+ *   ],
+ *   "stores": [ { "agentId": "gretta", "path": "..." } ],
+ *   "count": 4
+ * }
  */
 export async function GET(request: NextRequest) {
   try {
@@ -18,43 +34,49 @@ export async function GET(request: NextRequest) {
     const cmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} sessions --all-agents --json 2>/dev/null`;
     const { stdout } = await execAsync(cmd, { timeout: 30000, shell: "/bin/zsh" });
 
-    // Extract JSON from the output (may have banner/plugin logs before it)
-    const jsonMatch = stdout.match(/[\[{][\s\S]*[\]}]/);
+    // Extract the JSON object from the output (may have banner/plugin logs before it)
+    const jsonMatch = stdout.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       return NextResponse.json({
         sessions: [],
-        summary: { totalInput: 0, totalOutput: 0, totalTokens: 0, byModel: [], byAgent: [] },
+        summary: { totalInput: 0, totalOutput: 0, totalTokens: 0, sessionCount: 0, byModel: [], byAgent: [] },
         error: "No JSON found in sessions output",
+        raw: stdout.slice(0, 500),
       });
     }
 
-    let raw: unknown;
+    let parsed: Record<string, unknown>;
     try {
-      raw = JSON.parse(jsonMatch[0]);
-    } catch {
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch (e) {
       return NextResponse.json({
         sessions: [],
-        summary: { totalInput: 0, totalOutput: 0, totalTokens: 0, byModel: [], byAgent: [] },
-        error: "Failed to parse sessions JSON",
+        summary: { totalInput: 0, totalOutput: 0, totalTokens: 0, sessionCount: 0, byModel: [], byAgent: [] },
+        error: `Failed to parse sessions JSON: ${e instanceof Error ? e.message : "unknown"}`,
+        raw: jsonMatch[0].slice(0, 500),
       });
     }
 
-    // Normalize to array
-    const sessions: SessionData[] = [];
-    const items = Array.isArray(raw) ? raw : [raw];
+    // Sessions are inside parsed.sessions[]
+    const rawSessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
 
-    for (const item of items) {
+    const sessions: SessionData[] = [];
+
+    for (const item of rawSessions) {
       if (!item || typeof item !== "object") continue;
       const s = item as Record<string, unknown>;
 
-      // Extract token fields — OpenClaw uses inputTokens/outputTokens/totalTokens
-      const inputTokens = Number(s.inputTokens ?? s.input_tokens ?? 0);
-      const outputTokens = Number(s.outputTokens ?? s.output_tokens ?? 0);
-      const totalTokens = Number(s.totalTokens ?? s.total_tokens ?? inputTokens + outputTokens);
-      const model = String(s.model ?? s.modelId ?? "unknown");
-      const modelProvider = String(s.modelProvider ?? s.model_provider ?? "unknown");
-      const agentId = String(s.agentId ?? s.agent_id ?? s.agent ?? "unknown");
-      const sessionId = String(s.sessionId ?? s.session_id ?? s.id ?? "");
+      const inputTokens = Number(s.inputTokens ?? 0);
+      const outputTokens = Number(s.outputTokens ?? 0);
+      const totalTokens = Number(s.totalTokens ?? inputTokens + outputTokens);
+      const model = String(s.model ?? "unknown");
+      const modelProvider = String(s.modelProvider ?? "unknown");
+      const sessionId = String(s.sessionId ?? s.id ?? "");
+
+      // Extract agentId from session key "agent:gretta:main" → "gretta"
+      const key = String(s.key ?? "");
+      const keyParts = key.split(":");
+      const agentId = keyParts.length >= 2 ? keyParts[1] : String(s.agentId ?? "unknown");
 
       sessions.push({
         sessionId,
@@ -68,7 +90,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Build summary aggregations
-    const byModel = new Map<string, { model: string; inputTokens: number; outputTokens: number; totalTokens: number }>();
+    const byModel = new Map<string, { model: string; modelProvider: string; inputTokens: number; outputTokens: number; totalTokens: number }>();
     const byAgent = new Map<string, { agentId: string; inputTokens: number; outputTokens: number; totalTokens: number; models: Set<string> }>();
 
     let totalInput = 0;
@@ -89,6 +111,7 @@ export async function GET(request: NextRequest) {
       } else {
         byModel.set(s.model, {
           model: s.model,
+          modelProvider: s.modelProvider,
           inputTokens: s.inputTokens,
           outputTokens: s.outputTokens,
           totalTokens: s.totalTokens,
