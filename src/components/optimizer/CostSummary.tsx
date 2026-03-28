@@ -2,6 +2,7 @@
 
 import { TrendingDown, TrendingUp, Minus } from "lucide-react";
 import { formatCost } from "@/lib/optimizer";
+import { ProviderSpend } from "@/types/rates";
 
 interface CostSummaryProps {
   /** Fixed actual spend — does NOT change with levers */
@@ -11,6 +12,8 @@ interface CostSummaryProps {
   /** Projected/estimated cost — updates as user changes levers */
   projectedCost: number;
   hasChanges: boolean;
+  /** Per-provider spend breakdown */
+  providerSpend?: ProviderSpend[];
 }
 
 export default function CostSummary({
@@ -18,11 +21,26 @@ export default function CostSummary({
   actualSource,
   projectedCost,
   hasChanges,
+  providerSpend,
 }: CostSummaryProps) {
   const hasActual = actualCost !== null && actualCost > 0;
   const delta = hasChanges && hasActual ? projectedCost - actualCost : 0;
   const isUp = delta > 0.01;
   const isDown = delta < -0.01;
+
+  // Build source label from connected providers
+  const connectedProviders = (providerSpend ?? [])
+    .filter((s) => s.source === "admin-api" && s.monthlyEstimate > 0)
+    .map((s) => {
+      const name = s.provider === "anthropic" ? "Anthropic" : s.provider === "openai" ? "OpenAI" : s.provider;
+      return name;
+    });
+
+  const sourceLabel = connectedProviders.length > 0
+    ? connectedProviders.join(" + ")
+    : actualSource === "gateway"
+      ? "from gateway"
+      : "last 30 days";
 
   return (
     <div
@@ -36,9 +54,7 @@ export default function CostSummary({
         {hasActual && (
           <div>
             <p className="text-xs text-muted-foreground">
-              {actualSource === "gateway"
-                ? "Actual (from gateway)"
-                : "Actual (last 30 days)"}
+              Actual ({sourceLabel})
             </p>
             <p className="font-mono text-lg font-semibold">
               {formatCost(actualCost)}
@@ -46,6 +62,20 @@ export default function CostSummary({
                 /mo
               </span>
             </p>
+            {/* Per-provider breakdown when multiple providers */}
+            {providerSpend && providerSpend.filter(s => s.monthlyEstimate > 0).length > 1 && (
+              <div className="mt-1 space-y-0.5">
+                {providerSpend
+                  .filter((s) => s.monthlyEstimate > 0)
+                  .map((s) => (
+                    <p key={s.provider} className="text-[10px] text-muted-foreground/70">
+                      {s.provider === "anthropic" ? "Anthropic" : s.provider === "openai" ? "OpenAI" : s.provider}:{" "}
+                      {formatCost(s.monthlyEstimate)}/mo
+                      {s.source === "admin-api" ? "" : " (est.)"}
+                    </p>
+                  ))}
+              </div>
+            )}
           </div>
         )}
 

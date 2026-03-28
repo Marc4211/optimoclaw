@@ -9,36 +9,35 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import {
-  validateAdminKey,
-  looksLikeAdminKey,
+  validateOpenAIAdminKey,
+  looksLikeOpenAIKey,
   formatTokens,
-  ParsedUsage,
-  ParsedCost,
-} from "@/lib/anthropic-usage";
+  ParsedOpenAIUsage,
+  ParsedOpenAICost,
+  PerModelOpenAIUsage,
+} from "@/lib/openai-usage";
 import { useRates } from "@/contexts/RatesContext";
-import { allDefaultRates } from "@/lib/rates";
-import { RatesConfig, ProviderSpend } from "@/types/rates";
+import { ProviderSpend } from "@/types/rates";
 
-interface AdminKeyFlowProps {
+interface OpenAIAdminKeyFlowProps {
   onBack: () => void;
   onFallbackToManual: () => void;
 }
 
-export default function AdminKeyFlow({
+export default function OpenAIAdminKeyFlow({
   onBack,
   onFallbackToManual,
-}: AdminKeyFlowProps) {
+}: OpenAIAdminKeyFlowProps) {
   const { config, setRates } = useRates();
   const [adminKey, setAdminKey] = useState("");
   const [validating, setValidating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formatWarning, setFormatWarning] = useState(false);
 
-  // Show usage summary before confirming
   const [usageResult, setUsageResult] = useState<{
-    usage: ParsedUsage;
-    cost: ParsedCost;
-    perModel: Array<{ model: string; inputTokens: number; outputTokens: number; totalTokens: number }>;
+    usage: ParsedOpenAIUsage;
+    cost: ParsedOpenAICost;
+    perModel: PerModelOpenAIUsage[];
     period: { start: string; end: string; days: number };
   } | null>(null);
 
@@ -46,7 +45,7 @@ export default function AdminKeyFlow({
     setAdminKey(value);
     setError(null);
     setUsageResult(null);
-    setFormatWarning(value.length > 10 && !looksLikeAdminKey(value));
+    setFormatWarning(value.length > 10 && !looksLikeOpenAIKey(value));
   }
 
   async function handleConnect() {
@@ -54,7 +53,7 @@ export default function AdminKeyFlow({
     setValidating(true);
     setError(null);
 
-    const result = await validateAdminKey(adminKey.trim());
+    const result = await validateOpenAIAdminKey(adminKey.trim());
 
     if (result.valid) {
       setUsageResult({
@@ -73,16 +72,15 @@ export default function AdminKeyFlow({
   function handleConfirmRates() {
     if (!usageResult) return;
 
-    // Calculate monthly estimate from real spend
     const periodDays = usageResult.period.days || 30;
     const monthlyEstimate =
       usageResult.cost.totalUsd > 0
         ? (usageResult.cost.totalUsd / periodDays) * 30
         : 0;
 
-    // Build Anthropic provider spend entry
-    const anthropicSpend: ProviderSpend = {
-      provider: "anthropic",
+    // Build OpenAI provider spend entry
+    const openaiSpend: ProviderSpend = {
+      provider: "openai",
       source: "admin-api",
       totalUsd: usageResult.cost.totalUsd,
       periodDays,
@@ -95,17 +93,29 @@ export default function AdminKeyFlow({
       })),
     };
 
-    // Merge with existing config (preserve OpenAI data if already connected)
+    // Merge with existing config (preserve Anthropic data if already connected)
     const existingSpend = (config?.providerSpend ?? []).filter(
-      (s) => s.provider !== "anthropic"
+      (s) => s.provider !== "openai"
     );
-    const allSpend = [anthropicSpend, ...existingSpend];
+
+    // If config has legacy realSpend (Anthropic) but no providerSpend, migrate it
+    if (existingSpend.length === 0 && config?.realSpend) {
+      existingSpend.push({
+        provider: "anthropic",
+        source: "admin-api",
+        totalUsd: config.realSpend.totalUsd,
+        periodDays: config.realSpend.periodDays,
+        monthlyEstimate: config.realSpend.monthlyEstimate,
+        perModel: config.realSpend.perModel,
+      });
+    }
+
+    const allSpend = [...existingSpend, openaiSpend];
     const totalMonthly = allSpend.reduce((sum, s) => sum + s.monthlyEstimate, 0);
 
-    const newConfig: RatesConfig = {
+    setRates({
       source: "api-key",
-      provider: "anthropic",
-      models: allDefaultRates.map((r) => ({ ...r })),
+      models: config?.models ?? [],
       configuredAt: new Date().toISOString(),
       realSpend: {
         totalUsd: allSpend.reduce((sum, s) => sum + s.totalUsd, 0),
@@ -114,8 +124,7 @@ export default function AdminKeyFlow({
         perModel: allSpend.flatMap((s) => s.perModel ?? []),
       },
       providerSpend: allSpend,
-    };
-    setRates(newConfig);
+    });
   }
 
   return (
@@ -129,10 +138,10 @@ export default function AdminKeyFlow({
           Back
         </button>
 
-        <h2 className="text-lg font-semibold">Connect Anthropic Admin Key</h2>
+        <h2 className="text-lg font-semibold">Connect OpenAI Admin Key</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Pull your actual token usage and spend from Anthropic&apos;s Usage &amp;
-          Cost API.
+          Pull your actual token usage and spend from OpenAI&apos;s Usage &amp;
+          Costs API.
         </p>
 
         {/* What this needs */}
@@ -141,12 +150,8 @@ export default function AdminKeyFlow({
             This requires an Admin API key
           </p>
           <p className="mt-1 text-xs">
-            Admin keys start with{" "}
-            <code className="rounded bg-muted px-1 py-0.5 font-mono text-foreground">
-              sk-ant-admin
-            </code>{" "}
-            — they&apos;re different from standard API keys. Only organization
-            admins can create them.
+            Go to your OpenAI organization settings and create an Admin key.
+            Standard API keys won&apos;t have access to usage data.
           </p>
         </div>
 
@@ -157,7 +162,7 @@ export default function AdminKeyFlow({
               1
             </span>
             <span className="text-muted-foreground">
-              Open the Anthropic Console and go to Admin Keys
+              Open the OpenAI Platform and go to Admin Keys
             </span>
           </li>
           <li className="flex gap-3 text-sm">
@@ -165,7 +170,7 @@ export default function AdminKeyFlow({
               2
             </span>
             <span className="text-muted-foreground">
-              Create a new Admin key (or use an existing one)
+              Create a new Admin key with organization read access
             </span>
           </li>
           <li className="flex gap-3 text-sm">
@@ -180,12 +185,12 @@ export default function AdminKeyFlow({
         </ol>
 
         <a
-          href="https://console.anthropic.com/settings/admin-keys"
+          href="https://platform.openai.com/settings/organization/admin-keys"
           target="_blank"
           rel="noopener noreferrer"
           className="mt-4 inline-flex items-center gap-1.5 text-sm text-primary transition-colors hover:text-primary/80"
         >
-          Open Anthropic Admin Keys page
+          Open OpenAI Admin Keys page
           <ExternalLink size={12} />
         </a>
 
@@ -193,7 +198,7 @@ export default function AdminKeyFlow({
         <div className="mt-4">
           <input
             type="password"
-            placeholder="sk-ant-admin..."
+            placeholder="sk-..."
             value={adminKey}
             onChange={(e) => handleKeyChange(e.target.value)}
             className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 font-mono text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
@@ -205,9 +210,8 @@ export default function AdminKeyFlow({
           <div className="mt-3 flex items-start gap-2 rounded-lg bg-warning/10 px-3 py-2 text-xs text-warning">
             <AlertTriangle size={14} className="mt-0.5 shrink-0" />
             <span>
-              This doesn&apos;t look like an Admin key. Admin keys start with{" "}
-              <code className="font-mono">sk-ant-admin</code>. Standard API keys
-              won&apos;t work for usage data.
+              This doesn&apos;t look like an OpenAI API key. Keys typically
+              start with <code className="font-mono">sk-</code>.
             </span>
           </div>
         )}
@@ -216,7 +220,7 @@ export default function AdminKeyFlow({
         <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground/70">
           <Shield size={12} />
           <span>
-            Proxied through your local BroadClaw server to Anthropic&apos;s API.
+            Proxied through your local BroadClaw server to OpenAI&apos;s API.
             Never stored on disk — only held in memory during the request.
           </span>
         </div>
@@ -242,7 +246,7 @@ export default function AdminKeyFlow({
           </div>
         )}
 
-        {/* Usage summary — shown after successful key validation */}
+        {/* Usage summary */}
         {usageResult && (
           <div className="mt-5 rounded-lg border border-success/20 bg-success/5 p-4">
             <div className="mb-3 flex items-center gap-2 text-sm font-medium text-success">
@@ -279,23 +283,33 @@ export default function AdminKeyFlow({
               </div>
             </div>
 
-            {usageResult.usage.totalTokens > 0 && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Total: {formatTokens(usageResult.usage.totalTokens)} tokens this
-                period
-              </p>
+            {usageResult.perModel.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">
+                  By model:
+                </p>
+                {usageResult.perModel.slice(0, 5).map((m) => (
+                  <div
+                    key={m.model}
+                    className="flex items-center justify-between text-xs text-muted-foreground"
+                  >
+                    <span className="font-mono">{m.model}</span>
+                    <span>{formatTokens(m.totalTokens)} tokens</span>
+                  </div>
+                ))}
+              </div>
             )}
 
             <button
               onClick={handleConfirmRates}
               className="mt-4 w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
-              Confirm &amp; Continue to Optimizer
+              Confirm &amp; Add OpenAI Billing
             </button>
           </div>
         )}
 
-        {/* Connect button — only show if no result yet */}
+        {/* Connect button */}
         {!usageResult && (
           <button
             onClick={handleConnect}

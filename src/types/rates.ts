@@ -1,4 +1,4 @@
-export type Provider = "anthropic" | "openai";
+export type Provider = "anthropic" | "openai" | "ollama";
 
 export interface ModelRate {
   model: string;
@@ -8,23 +8,40 @@ export interface ModelRate {
   outputPerMillion: number;
 }
 
+/** Per-provider billing data */
+export interface ProviderSpend {
+  provider: Provider;
+  source: "admin-api" | "manual" | "free";
+  totalUsd: number;
+  periodDays: number;
+  monthlyEstimate: number;
+  perModel?: Array<{
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+  }>;
+}
+
 export interface RatesConfig {
   source: "manual" | "api-key";
   provider?: Provider;
   models: ModelRate[];
   configuredAt: string; // ISO timestamp
-  // Admin API spend data — present when source is "api-key"
+  // Legacy single-provider spend — kept for backwards compatibility
   realSpend?: {
-    totalUsd: number; // actual spend from cost report
-    periodDays: number; // how many days the spend covers
-    monthlyEstimate: number; // totalUsd / periodDays * 30
+    totalUsd: number;
+    periodDays: number;
+    monthlyEstimate: number;
     perModel?: Array<{
-      model: string; // e.g. "claude-3-5-haiku-20241022"
+      model: string;
       inputTokens: number;
       outputTokens: number;
       totalTokens: number;
     }>;
   };
+  // Multi-provider billing data
+  providerSpend?: ProviderSpend[];
 }
 
 export interface ProviderInfo {

@@ -646,6 +646,7 @@ export default function OptimizerPage() {
           actualSource={adminApiMonthly > 0 ? "admin-api" : undefined}
           projectedCost={projectedCost.total}
           hasChanges={hasChanges || modelLeverChangedFromOriginal}
+          providerSpend={ratesConfig?.providerSpend}
         />
 
         {/* Agent scope selector */}
