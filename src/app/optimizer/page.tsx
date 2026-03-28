@@ -16,8 +16,8 @@ import {
   getFilteredOptions,
   formatCost,
 } from "@/lib/optimizer";
-// Rate card (baked-in published prices) is the primary cost source — no billing APIs needed
 import { useGateway } from "@/contexts/GatewayContext";
+import { calculateTokenCost } from "@/lib/rate-card";
 import LeverCard from "@/components/optimizer/LeverCard";
 import CostSummary from "@/components/optimizer/CostSummary";
 import PresetSelector from "@/components/optimizer/PresetSelector";
@@ -178,6 +178,62 @@ export default function OptimizerPage() {
   const [lastConfig, setLastConfig] = useState<OpenClawConfig | null>(null);
 
   const agentCount = connected && agents.length > 0 ? agents.length : 1;
+
+  // --- Real token usage from gateway sessions ---
+  interface SessionSummary {
+    totalInput: number;
+    totalOutput: number;
+    totalTokens: number;
+    sessionCount: number;
+    byModel: Array<{ model: string; inputTokens: number; outputTokens: number; totalTokens: number }>;
+    byAgent: Array<{ agentId: string; inputTokens: number; outputTokens: number; totalTokens: number; models: string[] }>;
+  }
+  const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+
+  // Fetch real session token data from the gateway
+  useEffect(() => {
+    if (!connected || !client) return;
+    let cancelled = false;
+    setSessionsLoading(true);
+
+    const configPath = (client.snapshot?.configPath as string) ?? "";
+    const profileMatch = configPath.match(/\.openclaw-([^/]+)\//);
+    const profile = profileMatch ? profileMatch[1] : "";
+
+    fetch(`/api/sessions?profile=${encodeURIComponent(profile)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.summary) {
+          setSessionSummary(data.summary);
+          console.log("[Optimizer] Session token data:", data.summary);
+        }
+      })
+      .catch((err) => {
+        console.warn("[Optimizer] Failed to fetch session data:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setSessionsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [connected, client]);
+
+  // Calculate real cost from session tokens × rate card
+  const realTokenCost = useMemo(() => {
+    if (!sessionSummary || sessionSummary.totalTokens === 0) return null;
+
+    let totalCost = 0;
+    for (const m of sessionSummary.byModel) {
+      const cost = calculateTokenCost(m.model, {
+        input: m.inputTokens,
+        output: m.outputTokens,
+      });
+      totalCost += cost.total;
+    }
+    return totalCost;
+  }, [sessionSummary]);
 
   // Default the agent selector to the default agent once agents load
   useEffect(() => {
@@ -618,9 +674,12 @@ export default function OptimizerPage() {
       {/* ─── Cost & Model Routing (moves the number) ─── */}
       <div className="rounded-xl border border-border bg-surface/50 p-5 space-y-4">
         <CostSummary
-          actualCost={null}
-          projectedCost={projectedCost.total}
+          actualCost={realTokenCost}
+          actualSource={realTokenCost !== null ? "gateway" : undefined}
+          projectedCost={hasChanges ? projectedCost.total : (realTokenCost ?? projectedCost.total)}
           hasChanges={hasChanges}
+          sessionSummary={sessionSummary}
+          sessionsLoading={sessionsLoading}
         />
 
         {/* Agent scope selector */}
