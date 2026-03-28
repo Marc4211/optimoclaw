@@ -116,6 +116,9 @@ export default function AdminKeyFlow({
       providerSpend: allSpend,
     };
     setRates(newConfig);
+
+    // Navigate back — the rates are saved
+    onBack();
   }
 
   return (

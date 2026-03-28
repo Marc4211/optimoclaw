@@ -125,6 +125,9 @@ export default function OpenAIAdminKeyFlow({
       },
       providerSpend: allSpend,
     });
+
+    // Navigate back — the rates are saved, return to setup or optimizer
+    onBack();
   }
 
   return (
