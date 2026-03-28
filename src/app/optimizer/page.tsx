@@ -571,7 +571,8 @@ export default function OptimizerPage() {
   }
 
   if (!loaded) return null;
-  if (!hasRates) return <RateSetupCard />;
+  // Billing setup is optional — rate card provides estimates without any API keys.
+  // Only show when user explicitly clicks "Connect billing" from the manage link.
   if (showBillingSetup) return <RateSetupCard onClose={() => setShowBillingSetup(false)} />;
 
   return (
@@ -585,8 +586,10 @@ export default function OptimizerPage() {
               {connected
                 ? `Reading live config from ${activeGateway?.name ?? "your gateway"}`
                 : "Using default settings. Connect a gateway for live config."}
-              {adminApiMonthly > 0 && (
+              {adminApiMonthly > 0 ? (
                 <> &middot; ${adminApiMonthly.toFixed(0)}/mo actual (last 30 days)</>
+              ) : (
+                <> &middot; <button onClick={() => setShowBillingSetup(true)} className="text-primary hover:text-primary/80 transition-colors">Connect billing</button> to compare against your actual bill</>
               )}
             </p>
           </div>
