@@ -28,10 +28,11 @@ function shortModel(v: string): string {
     .trim();
 }
 
-function formatFreq(v: string | undefined): string {
+function formatFreq(v: string | undefined, isActive = true): string {
   if (!v || v === "off") return "Off";
   const m = v.match(/^(\d+)m$/);
-  return m ? `Every ${m[1]}min` : v;
+  if (!m) return v;
+  return isActive ? `Every ${m[1]}min` : `Every ${m[1]}min when active`;
 }
 
 interface AgentSessionData {
@@ -361,7 +362,7 @@ export default function AgentsPage() {
                     Heartbeat
                   </span>
                   <span className="text-xs font-medium">
-                    {formatFreq(heartbeat)}
+                    {formatFreq(heartbeat, agent.status === "online")}
                   </span>
                 </div>
               </div>
