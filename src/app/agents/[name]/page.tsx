@@ -91,20 +91,82 @@ export default function AgentDetailPage({
   const isDefault =
     agent?.id === defaultAgentId || agent?.name === defaultAgentId;
 
-  // Fetch config
+  // Fetch config via full CLI route (same as optimizer) for accurate per-agent models
   useEffect(() => {
-    if (!connected) return;
+    if (!connected || !client) return;
     let cancelled = false;
-    fetch("/api/config-get?key=agents")
+
+    const configPath = (client.snapshot?.configPath as string) ?? "";
+    const profileMatch = configPath.match(/\.openclaw-([^/]+)\//);
+    const profile = profileMatch ? profileMatch[1] : "";
+
+    fetch(
+      `/api/config-get?profile=${encodeURIComponent(profile)}&agentCount=${agents.length}`
+    )
       .then((r) => r.json())
       .then((data) => {
-        if (!cancelled) setConfig((data.config ?? data) as OpenClawConfig);
+        if (cancelled || !data.config) return;
+        const cfg = data.config as Record<string, string>;
+
+        const parsed: OpenClawConfig = {
+          agents: {
+            defaults: {
+              model: cfg["agents.defaults.model.primary"]
+                ? { primary: cfg["agents.defaults.model.primary"] }
+                : undefined,
+              heartbeat: {
+                every: cfg["agents.defaults.heartbeat.every"] ?? "",
+                model: cfg["agents.defaults.heartbeat.model"] ?? "",
+              },
+              compaction: {
+                model: cfg["agents.defaults.model.primary"] ?? "",
+                threshold: cfg["agents.defaults.compaction.threshold"]
+                  ? Number(cfg["agents.defaults.compaction.threshold"])
+                  : undefined,
+              },
+              subagents: {
+                maxConcurrent: cfg["agents.defaults.subagents.maxConcurrent"]
+                  ? Number(cfg["agents.defaults.subagents.maxConcurrent"])
+                  : undefined,
+              },
+            },
+            list: [],
+          },
+        };
+
+        const agentKeys = Object.keys(cfg).filter((k) =>
+          k.startsWith("agents.list[")
+        );
+        const agentIndices = new Set(
+          agentKeys
+            .map((k) => {
+              const m = k.match(/agents\.list\[(\d+)\]/);
+              return m ? Number(m[1]) : -1;
+            })
+            .filter((i) => i >= 0)
+        );
+
+        for (const idx of Array.from(agentIndices).sort()) {
+          const heartbeatEvery = cfg[`agents.list[${idx}].heartbeat.every`];
+          const heartbeatModel = cfg[`agents.list[${idx}].heartbeat.model`];
+          parsed.agents!.list!.push({
+            name: cfg[`agents.list[${idx}].name`] ?? `agent${idx}`,
+            model: cfg[`agents.list[${idx}].model.primary`] ?? "",
+            heartbeat:
+              heartbeatEvery || heartbeatModel
+                ? { every: heartbeatEvery ?? "", model: heartbeatModel ?? "" }
+                : undefined,
+          });
+        }
+
+        setConfig(parsed);
       })
       .catch(() => {});
+
     return () => {
       cancelled = true;
     };
-  }, [connected]);
+  }, [connected, client, agents.length]);
 
   // Fetch sessions
   useEffect(() => {
