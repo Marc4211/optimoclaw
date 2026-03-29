@@ -41,6 +41,8 @@ interface LeverCardProps {
   /** Disable the lever with a message (e.g. plugin not installed) */
   disabled?: boolean;
   disabledMessage?: string;
+  /** Visually dim the lever (not suggested by tune mode) but keep it interactive */
+  dimmed?: boolean;
   /** For model levers: dynamic model options from the gateway */
   modelOptions?: GatewayModel[];
   filteredOptions?: { value: string; label: string }[];
@@ -58,6 +60,7 @@ export default function LeverCard({
   tagOverride,
   disabled,
   disabledMessage,
+  dimmed,
   modelOptions,
   filteredOptions,
   rationale,
@@ -77,7 +80,7 @@ export default function LeverCard({
 
   return (
     <div
-      className={`rounded-lg border border-border bg-surface p-5 ${disabled ? "opacity-50" : ""}`}
+      className={`rounded-lg border border-border bg-surface p-5 transition-opacity ${disabled ? "opacity-50" : dimmed ? "opacity-40" : ""}`}
       data-lever={lever.key}
       data-value={disabled ? "disabled" : String(value)}
       data-cost-delta={hasChanged ? costDeltaPercent.toFixed(0) : null}

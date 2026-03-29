@@ -457,22 +457,6 @@ export default function OptimizerPage() {
     return deltas;
   }, [values, baseConfig, costOptions]);
 
-  // Visible sections/levers based on tune mode
-  const visibleLeverKeys = useMemo(() => {
-    if (!tuneMode) return null;
-    return new Set(tuneModes[tuneMode].leverKeys);
-  }, [tuneMode]);
-
-  const visibleSections = useMemo(() => {
-    if (!visibleLeverKeys) return sections;
-    return sections
-      .map((s) => ({
-        ...s,
-        leverKeys: s.leverKeys.filter((k) => visibleLeverKeys.has(k)),
-      }))
-      .filter((s) => s.leverKeys.length > 0);
-  }, [visibleLeverKeys]);
-
   function handleApply() {
     setShowDiff(true);
   }
@@ -650,7 +634,7 @@ export default function OptimizerPage() {
                   onClick={() => setTuneMode(null)}
                   className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
                 >
-                  Show all
+                  Reset
                 </button>
               </div>
             )}
@@ -697,34 +681,38 @@ export default function OptimizerPage() {
           {(sections.find((s) => s.id === "model-routing")?.leverKeys ?? [])
             .map((key) => levers.find((l) => l.key === key)!)
             .filter(Boolean)
-            .map((lever) => (
-              <LeverCard
-                key={lever.key}
-                lever={lever}
-                labelOverride={
-                  lever.key === "defaultModel" && selectedAgentId
-                    ? `${selectedAgentName}'s Model`
-                    : undefined
-                }
-                value={values[lever.key]}
-                isModelLever={true}
-                costDeltaPercent={leverCostDeltaPercents[lever.key]}
-                inherited={inheritedLevers.has(lever.key)}
-                tagOverride={lever.key === "compactionModel" && hasLosslessClaw ? "LosslessClaw feature" : undefined}
-                disabled={lever.key === "compactionModel" && !hasLosslessClaw}
-                disabledMessage={
-                  lever.key === "compactionModel" && !hasLosslessClaw
-                    ? "Requires LosslessClaw plugin for context compaction. Install it to control compaction costs and reduce token spend on long conversations."
-                    : undefined
-                }
-                modelOptions={availableModels}
-                filteredOptions={getFilteredOptions(lever)}
-                rationale={
-                  tuneMode ? tuneModes[tuneMode].rationale[lever.key] : undefined
-                }
-                onChange={handleChange}
-              />
-            ))}
+            .map((lever) => {
+              const isSuggested = !tuneMode || tuneModes[tuneMode].leverKeys.includes(lever.key);
+              return (
+                <LeverCard
+                  key={lever.key}
+                  lever={lever}
+                  labelOverride={
+                    lever.key === "defaultModel" && selectedAgentId
+                      ? `${selectedAgentName}'s Model`
+                      : undefined
+                  }
+                  value={values[lever.key]}
+                  isModelLever={true}
+                  costDeltaPercent={leverCostDeltaPercents[lever.key]}
+                  inherited={inheritedLevers.has(lever.key)}
+                  dimmed={!!tuneMode && !isSuggested}
+                  tagOverride={lever.key === "compactionModel" && hasLosslessClaw ? "LosslessClaw feature" : undefined}
+                  disabled={lever.key === "compactionModel" && !hasLosslessClaw}
+                  disabledMessage={
+                    lever.key === "compactionModel" && !hasLosslessClaw
+                      ? "Requires LosslessClaw plugin for context compaction. Install it to control compaction costs and reduce token spend on long conversations."
+                      : undefined
+                  }
+                  modelOptions={availableModels}
+                  filteredOptions={getFilteredOptions(lever)}
+                  rationale={
+                    isSuggested && tuneMode ? tuneModes[tuneMode].rationale[lever.key] : undefined
+                  }
+                  onChange={handleChange}
+                />
+              );
+            })}
         </div>
       </div>
 
@@ -769,12 +757,7 @@ export default function OptimizerPage() {
               .map((key) => levers.find((l) => l.key === key)!)
               .filter(Boolean);
 
-            // Filter by tune mode if active
-            const visible = tuneMode
-              ? sectionLevers.filter((l) => tuneModes[tuneMode].leverKeys.includes(l.key))
-              : sectionLevers;
-
-            if (visible.length === 0) return null;
+            if (sectionLevers.length === 0) return null;
 
             return (
               <div key={section.id} data-section={section.id}>
@@ -782,21 +765,25 @@ export default function OptimizerPage() {
                   <h3 className="text-[15px] font-normal text-muted-foreground">{section.label}</h3>
                 </div>
                 <div className="grid gap-3">
-                  {visible.map((lever) => (
-                    <LeverCard
-                      key={lever.key}
-                      lever={lever}
-                      value={values[lever.key]}
-                      isModelLever={false}
-                      costDeltaPercent={0}
-                      inherited={inheritedLevers.has(lever.key)}
-                      filteredOptions={getFilteredOptions(lever)}
-                      rationale={
-                        tuneMode ? tuneModes[tuneMode].rationale[lever.key] : undefined
-                      }
-                      onChange={handleChange}
-                    />
-                  ))}
+                  {sectionLevers.map((lever) => {
+                    const isSuggested = !tuneMode || tuneModes[tuneMode].leverKeys.includes(lever.key);
+                    return (
+                      <LeverCard
+                        key={lever.key}
+                        lever={lever}
+                        value={values[lever.key]}
+                        isModelLever={false}
+                        costDeltaPercent={0}
+                        inherited={inheritedLevers.has(lever.key)}
+                        dimmed={!!tuneMode && !isSuggested}
+                        filteredOptions={getFilteredOptions(lever)}
+                        rationale={
+                          isSuggested && tuneMode ? tuneModes[tuneMode].rationale[lever.key] : undefined
+                        }
+                        onChange={handleChange}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             );
