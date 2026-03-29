@@ -46,64 +46,84 @@ const COST_LABELS: Record<string, { label: string; multiplier: string; color: st
   },
 };
 
-/** Analyze cache breakdown and return a dynamic insight */
+/**
+ * Analyze cache breakdown and return a structured insight.
+ *
+ * Each insight answers three things:
+ *  1. Status  — good, neutral, or a problem
+ *  2. What it means — one plain-language sentence
+ *  3. What to consider — one concrete, actionable suggestion
+ */
 function getInsight(data: CacheBreakdownData): {
   label: string;
-  detail: string;
+  status: string;
+  meaning: string;
+  action: string;
   color: "success" | "warning" | "danger" | "muted";
 } {
   if (data.tokenTotal === 0) {
     return {
       label: "No data",
-      detail: "No active sessions with token data available.",
+      status: "Waiting for sessions",
+      meaning: "No active sessions with token data available.",
+      action: "Data will appear once agents start running.",
       color: "muted",
     };
   }
 
   const cacheReadPct = data.cacheReadPercent;
   const cacheWritePct = data.cacheWritePercent;
-  const freshPct = data.freshInputPercent;
 
-  // Excellent caching
+  // Excellent caching (>90% reads)
   if (cacheReadPct > 90) {
     return {
       label: "Excellent cache efficiency",
-      detail: `${cacheReadPct.toFixed(0)}% of tokens are cache reads — the cheapest token type at 10% of input cost. Your sessions are heavily leveraging cached context, meaning most input tokens cost a fraction of their list price. This is the ideal pattern.`,
+      status: "This is ideal",
+      meaning: `${cacheReadPct.toFixed(0)}% of your tokens are cache reads — the cheapest token type at just 10% of the base input price.`,
+      action: "No changes needed. Your sessions are heavily leveraging cached context.",
       color: "success",
     };
   }
 
-  // Good caching
+  // Good caching (60–90% reads)
   if (cacheReadPct > 60) {
     return {
       label: "Good cache efficiency",
-      detail: `${cacheReadPct.toFixed(0)}% of tokens are cache reads (10% of input cost). Cache is working well. The remaining ${(freshPct + cacheWritePct).toFixed(0)}% is fresh input and cache writes, which are more expensive. Longer-lived sessions tend to improve this ratio.`,
+      status: "Looking good",
+      meaning: `${cacheReadPct.toFixed(0)}% of tokens are cache reads (10% of input cost). Most of your input is served from cache.`,
+      action: "Longer-lived sessions tend to improve this ratio further, since more messages hit warm cache instead of re-caching.",
       color: "success",
     };
   }
 
-  // High cache writes — expensive
+  // High cache writes (>20%)
   if (cacheWritePct > 20) {
     return {
       label: "High cache write ratio",
-      detail: `${cacheWritePct.toFixed(0)}% of tokens are cache writes, which cost 1.25x input price. This typically happens with frequent session refreshes or short-lived sessions that keep re-caching context. Longer session lifetimes or cache-ttl pruning can shift more tokens to cheaper cache reads.`,
+      status: "Worth optimizing",
+      meaning: `${cacheWritePct.toFixed(0)}% of tokens are cache writes, which cost 1.25× the base input price. This usually means sessions are frequently refreshing or restarting.`,
+      action: "Longer session lifetimes or enabling cache-TTL pruning can shift more tokens from expensive writes to cheap reads.",
       color: "warning",
     };
   }
 
-  // Low cache hit rate
+  // Low cache hit rate (<40% reads)
   if (cacheReadPct < 40) {
     return {
       label: "Low cache utilization",
-      detail: `Only ${cacheReadPct.toFixed(0)}% of tokens are cache reads. Most input is being sent fresh at full price. Check that prompt caching is enabled and that sessions persist long enough to benefit from cached context. Each new session starts cold and must re-cache everything.`,
+      status: "Room for improvement",
+      meaning: `Only ${cacheReadPct.toFixed(0)}% of tokens are cache reads. Most input is being sent fresh at full price.`,
+      action: "Check that prompt caching is enabled and sessions persist long enough to benefit. Each new session starts cold and must re-cache everything.",
       color: "warning",
     };
   }
 
-  // Moderate — nothing notable
+  // Moderate (40–60% reads, writes under 20%)
   return {
     label: "Moderate caching",
-    detail: `${cacheReadPct.toFixed(0)}% cache reads, ${cacheWritePct.toFixed(0)}% cache writes, ${freshPct.toFixed(0)}% fresh input. There may be room to improve cache utilization — longer session lifetimes and proper cache TTL configuration can shift more tokens to the cheapest tier.`,
+    status: "Functional but could be better",
+    meaning: `${cacheReadPct.toFixed(0)}% of tokens are cache reads, ${cacheWritePct.toFixed(0)}% are cache writes. A decent portion of input is cached, but there's room to shift more toward reads.`,
+    action: "Longer session lifetimes and tuning cache TTL configuration can push more tokens to the cheapest tier (cache reads at 10% of input cost).",
     color: "muted",
   };
 }
@@ -188,8 +208,8 @@ export default function CacheEfficiencyChart({ data }: Props) {
       data-total-output={data.totalOutput}
       data-token-total={data.tokenTotal}
       data-status={insight.label.toLowerCase().replace(/\s+/g, "-")}
-      data-insight={insight.detail}
-      aria-label={`Cache efficiency: ${data.cacheReadPercent.toFixed(0)}% cache reads, ${data.cacheWritePercent.toFixed(0)}% cache writes, ${data.freshInputPercent.toFixed(0)}% fresh input, ${data.outputPercent.toFixed(0)}% output. ${insight.label}: ${insight.detail}`}
+      data-insight={insight.meaning}
+      aria-label={`Cache efficiency: ${data.cacheReadPercent.toFixed(0)}% cache reads, ${data.cacheWritePercent.toFixed(0)}% cache writes, ${data.freshInputPercent.toFixed(0)}% fresh input, ${data.outputPercent.toFixed(0)}% output. ${insight.label}: ${insight.meaning} ${insight.action}`}
     >
       {/* Header: title + large cached % with icon */}
       <div className="flex items-center justify-between mb-6">
@@ -267,16 +287,30 @@ export default function CacheEfficiencyChart({ data }: Props) {
         </div>
       </div>
 
-      {/* Dynamic insight box with CheckCircle2 icon */}
-      <div className={`p-3 ${insightStyles.bg} border ${insightStyles.border} rounded-md`}>
+      {/* Dynamic insight box — structured as status / meaning / action */}
+      <div
+        className={`p-3 ${insightStyles.bg} border ${insightStyles.border} rounded-md`}
+        data-insight-label={insight.label}
+        data-insight-status={insight.status}
+        data-insight-meaning={insight.meaning}
+        data-insight-action={insight.action}
+      >
         <div className="flex items-start gap-2">
           <CheckCircle2 className={`w-4 h-4 ${insightStyles.icon} flex-shrink-0 mt-0.5`} />
-          <div>
-            <h4 className={`text-[13px] font-normal ${insightStyles.heading} mb-1`}>
-              {insight.label}
-            </h4>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <h4 className={`text-[13px] font-medium ${insightStyles.heading}`}>
+                {insight.label}
+              </h4>
+              <span className={`text-[11px] ${insightStyles.body}`}>
+                — {insight.status}
+              </span>
+            </div>
             <p className={`text-[12px] ${insightStyles.body} leading-relaxed`}>
-              {insight.detail}
+              {insight.meaning}
+            </p>
+            <p className={`text-[12px] ${insightStyles.heading} leading-relaxed`}>
+              → {insight.action}
             </p>
           </div>
         </div>

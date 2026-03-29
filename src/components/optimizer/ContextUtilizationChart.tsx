@@ -35,10 +35,19 @@ function formatWindow(n: number): string {
   return String(n);
 }
 
-/** Analyze utilization and return a dynamic insight */
+/**
+ * Analyze utilization and return a dynamic insight.
+ *
+ * Each insight answers three things clearly:
+ *  1. Status  — good, neutral, or a problem (conveyed by color + label)
+ *  2. What it means — one plain-language sentence
+ *  3. What to consider — one concrete, actionable suggestion (if any)
+ */
 function getInsight(data: ContextUtilizationData): {
   label: string;
-  detail: string;
+  status: string;
+  meaning: string;
+  action: string;
   color: "success" | "warning" | "danger" | "muted";
 } {
   const avg = data.avgPercentUsed;
@@ -51,69 +60,79 @@ function getInsight(data: ContextUtilizationData): {
   const oversized = data.sessions.filter(
     (s) => s.contextTokens >= 500_000 && s.percentUsed < 15
   );
-  const rightsized = data.sessions.filter(
-    (s) => s.contextTokens < 500_000
-  );
 
+  // --- Specific: big windows barely used ---
   if (oversized.length > 0 && avg < 10) {
-    const windowList = windowSizes
-      .sort((a, b) => b - a)
-      .map((w) => formatWindow(w))
-      .join(" and ");
-
-    if (hasMixedWindows && rightsized.length > 0) {
+    if (hasMixedWindows) {
       return {
         label: "Mixed window sizes",
-        detail: `${oversized.length} session${oversized.length !== 1 ? "s use" : " uses"} a ${formatWindow(oversized[0].contextTokens)} extended context window at under ${Math.max(...oversized.map((s) => s.percentUsed))}% utilization, while ${rightsized.length} session${rightsized.length !== 1 ? "s use" : " uses"} ${formatWindow(rightsized[0].contextTokens)}. The extended windows cost more on every cache write. Check whether those sessions actually need the larger window — the gateway may have auto-assigned it.`,
+        status: "Worth reviewing",
+        meaning: `${oversized.length} session${oversized.length !== 1 ? "s have" : " has"} a ${formatWindow(oversized[0].contextTokens)} context window but ${oversized.length === 1 ? "is" : "are"} using less than 15% of it. Other sessions use smaller ${formatWindow(Math.min(...windowSizes))} windows.`,
+        action: "Check if the larger windows were auto-assigned by the gateway. Switching them to the smaller size would reduce cache write costs.",
         color: "warning",
       };
     }
-
     return {
       label: "Over-provisioned",
-      detail: `All ${oversized.length} sessions use ${formatWindow(oversized[0].contextTokens)} context windows but average only ${avg.toFixed(0)}% utilization. Smaller windows reduce cache write costs on every session refresh. Consider whether these sessions need the extended context.`,
+      status: "Optimization opportunity",
+      meaning: `All sessions have ${formatWindow(oversized[0].contextTokens)} context windows but are only using ${avg.toFixed(0)}% on average.`,
+      action: "Reducing context window sizes would lower cache write costs — the gateway re-caches the full window on every write.",
       color: "warning",
     };
   }
 
+  // --- Low utilization (< 15%) ---
   if (avg < 15) {
-    const windowNote = hasMixedWindows
-      ? ` Window sizes vary (${windowSizes.sort((a, b) => b - a).map(formatWindow).join(", ")}) — sessions with larger windows cost more to cache even at low utilization.`
-      : "";
     return {
       label: "Low utilization",
-      detail: `Sessions are averaging ${avg.toFixed(0)}% of their context windows.${windowNote} If this is typical, reducing context window sizes could lower cache write costs — the gateway re-caches the full window on each write, so smaller windows mean cheaper refreshes.`,
-      color: "warning",
+      status: "This is normal for short or new sessions",
+      meaning: `Your sessions are using about ${avg.toFixed(0)}% of their context windows on average. Conversations haven't grown large yet.`,
+      action: hasMixedWindows
+        ? `You have mixed window sizes (${windowSizes.sort((a, b) => b - a).map(formatWindow).join(" and ")}). If sessions consistently stay this low, smaller windows would reduce cache costs.`
+        : "No action needed unless utilization stays this low over time — that would suggest the context windows are larger than necessary.",
+      color: "muted",
     };
   }
 
+  // --- Comfortable (15–40%) ---
   if (avg < 40) {
     return {
-      label: "Comfortable headroom",
-      detail: `Sessions are using about ${avg.toFixed(0)}% of available context. There's room for longer conversations before compaction kicks in. Current window sizes look reasonable for this workload.`,
+      label: "Good headroom",
+      status: "Looking good",
+      meaning: `Sessions are using about ${avg.toFixed(0)}% of their context windows — plenty of room for conversations to grow before compaction kicks in.`,
+      action: "No changes needed. Current window sizes match your workload well.",
       color: "success",
     };
   }
 
+  // --- Healthy (40–75%) ---
   if (avg < 75) {
     return {
-      label: "Healthy utilization",
-      detail: `Context windows are ${avg.toFixed(0)}% utilized on average — a good balance between having room to work and not over-provisioning. Compaction settings are worth tuning at this level to manage when sessions get summarized.`,
+      label: "Well utilized",
+      status: "Looking good",
+      meaning: `Context windows are ${avg.toFixed(0)}% utilized — a good balance between capacity and efficiency.`,
+      action: "Consider tuning the Compaction Threshold (in Performance Tuning below) to control when long conversations get summarized.",
       color: "success",
     };
   }
 
+  // --- Running warm (75–90%) ---
   if (avg < 90) {
     return {
       label: "Running warm",
-      detail: `Sessions are using ${avg.toFixed(0)}% of their context windows. Compaction will trigger more frequently as sessions grow. Consider increasing the context window or tuning compaction thresholds to avoid mid-conversation summarization.`,
+      status: "Keep an eye on this",
+      meaning: `Sessions are using ${avg.toFixed(0)}% of their context windows. Compaction will start triggering more frequently.`,
+      action: "Consider increasing context window sizes or lowering the Compaction Threshold to summarize earlier and avoid mid-conversation quality drops.",
       color: "warning",
     };
   }
 
+  // --- Near capacity (90%+) ---
   return {
     label: "Near capacity",
-    detail: `Context windows are ${avg.toFixed(0)}% full on average. Sessions are likely hitting compaction frequently, which can cause context loss and adds summarization token costs. Consider larger context windows or more aggressive session pruning.`,
+    status: "Action recommended",
+    meaning: `Context windows are ${avg.toFixed(0)}% full. Sessions are likely hitting compaction frequently, which can cause context loss.`,
+    action: "Increase context window sizes, enable more aggressive session pruning, or lower heartbeat frequency to reduce how fast context fills up.",
     color: "danger",
   };
 }
@@ -175,8 +194,8 @@ export default function ContextUtilizationChart({ data }: Props) {
       data-total-context-available={data.totalContextAvailable}
       data-total-context-used={data.totalContextUsed}
       data-status={insight.label.toLowerCase().replace(/\s+/g, "-")}
-      data-insight={insight.detail}
-      aria-label={`Context utilization: ${data.avgPercentUsed.toFixed(0)}% average across ${data.sessions.length} sessions. ${insight.label}: ${insight.detail}`}
+      data-insight={insight.meaning}
+      aria-label={`Context utilization: ${data.avgPercentUsed.toFixed(0)}% average across ${data.sessions.length} sessions. ${insight.label}: ${insight.meaning} ${insight.action}`}
     >
       {/* Header with large number display and icon */}
       <div className="flex items-center justify-between mb-6">
@@ -234,16 +253,30 @@ export default function ContextUtilizationChart({ data }: Props) {
         ))}
       </div>
 
-      {/* Dynamic insight */}
-      <div className={`p-3 ${insightBg} border ${insightBorder} rounded-md`}>
+      {/* Dynamic insight — structured as status / meaning / action */}
+      <div
+        className={`p-3 ${insightBg} border ${insightBorder} rounded-md`}
+        data-insight-label={insight.label}
+        data-insight-status={insight.status}
+        data-insight-meaning={insight.meaning}
+        data-insight-action={insight.action}
+      >
         <div className="flex items-start gap-2">
           <CheckCircle2 className={`w-4 h-4 ${insightIconColor} flex-shrink-0 mt-0.5`} />
-          <div>
-            <h4 className={`text-[13px] font-normal ${insightLabelColor} mb-1`}>
-              {insight.label}
-            </h4>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <h4 className={`text-[13px] font-medium ${insightLabelColor}`}>
+                {insight.label}
+              </h4>
+              <span className={`text-[11px] ${insightDetailColor}`}>
+                — {insight.status}
+              </span>
+            </div>
             <p className={`text-[12px] ${insightDetailColor} leading-relaxed`}>
-              {insight.detail}
+              {insight.meaning}
+            </p>
+            <p className={`text-[12px] ${insightLabelColor} leading-relaxed`}>
+              → {insight.action}
             </p>
           </div>
         </div>
