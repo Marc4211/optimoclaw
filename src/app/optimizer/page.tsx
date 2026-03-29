@@ -119,7 +119,7 @@ function extractAgentLeverValues(
 
 // --- Lever value → real OpenClaw config value mapping ---
 
-/** Map BroadClaw lever values to config values for openclaw config set.
+/** Map OptimoClaw lever values to config values for openclaw config set.
  *  Model values are already full strings from the gateway — no mapping needed.
  *  Only frequency needs a small transform (off → disabled). */
 function leverValueToConfig(key: string, value: string | number): string | number {
@@ -157,14 +157,14 @@ function OptimizerPageInner() {
   const [originalConfig, setOriginalConfigState] = useState<LeverValue | null>(() => {
     if (typeof window === "undefined") return null;
     try {
-      const stored = localStorage.getItem("broadclaw-original-config");
+      const stored = localStorage.getItem("optimoclaw-original-config");
       return stored ? JSON.parse(stored) : null;
     } catch { return null; }
   });
   const setOriginalConfig = (config: LeverValue) => {
     setOriginalConfigState(config);
     try {
-      localStorage.setItem("broadclaw-original-config", JSON.stringify(config));
+      localStorage.setItem("optimoclaw-original-config", JSON.stringify(config));
     } catch { /* non-critical */ }
   };
   const [values, setValues] = useState<LeverValue>({ ...fallbackDefaults });

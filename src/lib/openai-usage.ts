@@ -1,5 +1,5 @@
 /**
- * Client for the BroadClaw OpenAI usage proxy (/api/openai-usage).
+ * Client for the OptimoClaw OpenAI usage proxy (/api/openai-usage).
  *
  * OpenAI Usage API returns token counts per model.
  * OpenAI Costs API returns USD amounts per line item.

@@ -1,5 +1,5 @@
 /**
- * Published model rate card — baked into BroadClaw.
+ * Published model rate card — baked into OptimoClaw.
  *
  * Source of truth for cost estimation. All prices are $/million tokens (MTok),
  * exactly as published on the provider pricing pages:

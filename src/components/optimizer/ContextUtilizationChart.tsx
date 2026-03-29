@@ -38,7 +38,7 @@ function formatWindow(n: number): string {
 /**
  * Analyze utilization and return a structured insight.
  *
- * Each insight is BroadClaw-lever-aware: it either points to a specific
+ * Each insight is OptimoClaw-lever-aware: it either points to a specific
  * lever the user can change, honestly says there's no lever for it, or
  * confirms things are already optimal. No dangling diagnoses.
  */
@@ -67,7 +67,7 @@ function getInsight(data: ContextUtilizationData): {
     const largeWindow = formatWindow(oversized[0].contextTokens);
     return {
       label: hasMixedWindows ? "Mixed window sizes" : "Over-provisioned windows",
-      status: "BroadClaw lever available",
+      status: "OptimoClaw lever available",
       meaning: hasMixedWindows
         ? `${oversized.length} session${oversized.length !== 1 ? "s are" : " is"} using a ${largeWindow} context window at under 15% utilization. Larger windows cost more on every cache write — you pay for the headroom even if you don't use it.`
         : `All sessions have ${largeWindow} context windows but are only using ${avg.toFixed(0)}% on average. Larger windows cost more on every cache write — you pay for the headroom even if you don't use it.`,
@@ -83,7 +83,7 @@ function getInsight(data: ContextUtilizationData): {
       label: "Low utilization",
       status: "Normal for short or new sessions",
       meaning: `Your sessions are using about ${avg.toFixed(0)}% of their context windows on average. Conversations haven't grown large yet.`,
-      action: "Nothing to change in BroadClaw. Context utilization grows naturally as conversations get longer. This is just a snapshot of current session state.",
+      action: "Nothing to change in OptimoClaw. Context utilization grows naturally as conversations get longer. This is just a snapshot of current session state.",
       lever: null,
       color: "muted",
     };
@@ -117,7 +117,7 @@ function getInsight(data: ContextUtilizationData): {
   if (avg < 90) {
     return {
       label: "Running warm",
-      status: "BroadClaw lever available",
+      status: "OptimoClaw lever available",
       meaning: `Sessions are using ${avg.toFixed(0)}% of their context windows. Compaction will start triggering more frequently as conversations grow.`,
       action: "Lower the Compaction Threshold in Performance Tuning below. This makes the gateway summarize earlier, freeing up context space before sessions hit the wall. Current quality may shift slightly as older context gets compressed.",
       lever: "compactionThreshold",
@@ -128,7 +128,7 @@ function getInsight(data: ContextUtilizationData): {
   // --- Near capacity (90%+) ---
   return {
     label: "Near capacity",
-    status: "BroadClaw lever available",
+    status: "OptimoClaw lever available",
     meaning: `Context windows are ${avg.toFixed(0)}% full. Sessions are likely hitting compaction frequently, which can cause context loss and adds summarization token costs.`,
     action: "Lower the Compaction Threshold in Performance Tuning below to summarize earlier. You can also reduce Heartbeat Frequency — fewer heartbeats means less context accumulation per hour.",
     lever: "compactionThreshold",

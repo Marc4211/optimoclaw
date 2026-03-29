@@ -1,7 +1,7 @@
 /**
- * Client for the BroadClaw Anthropic usage proxy (/api/anthropic-usage).
+ * Client for the OptimoClaw Anthropic usage proxy (/api/anthropic-usage).
  *
- * Parsing logic adapted from broadclaw-usage-reference/UsageSection.tsx
+ * Parsing logic adapted from usage-reference/UsageSection.tsx
  * (parseClaudeUsage / parseClaudeCost functions).
  */
 

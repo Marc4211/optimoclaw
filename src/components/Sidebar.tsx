@@ -59,7 +59,7 @@ export default function Sidebar() {
         <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
           <span className="text-sm font-bold text-primary-foreground">B</span>
         </div>
-        <span className="text-sm font-semibold tracking-tight">BroadClaw</span>
+        <span className="text-sm font-semibold tracking-tight">OptimoClaw</span>
       </div>
 
       {/* Nav */}

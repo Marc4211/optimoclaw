@@ -5,7 +5,7 @@ import { useGateway } from "@/contexts/GatewayContext";
 import { useRates } from "@/contexts/RatesContext";
 
 /**
- * Injects full app state onto window.__BROADCLAW_STATE__ for agent consumption.
+ * Injects full app state onto window.__OPTIMOCLAW_STATE__ for agent consumption.
  * Updates on every render so agents always get fresh data.
  * No visual output — purely a side-effect component.
  */
@@ -21,7 +21,7 @@ export default function AppStateProvider() {
 
   useEffect(() => {
     const state = {
-      app: "broadclaw",
+      app: "optimoclaw",
       version: "0.1.0",
       gateway: {
         connected,
@@ -47,7 +47,7 @@ export default function AppStateProvider() {
       timestamp: new Date().toISOString(),
     };
 
-    (window as unknown as Record<string, unknown>).__BROADCLAW_STATE__ = state;
+    (window as unknown as Record<string, unknown>).__OPTIMOCLAW_STATE__ = state;
   });
 
   return null;

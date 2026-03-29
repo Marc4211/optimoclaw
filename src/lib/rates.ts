@@ -1,6 +1,6 @@
 import { RatesConfig, ModelRate } from "@/types/rates";
 
-const STORAGE_KEY = "broadclaw-rates";
+const STORAGE_KEY = "optimoclaw-rates";
 
 // --- Default published rates (March 2026) ---
 

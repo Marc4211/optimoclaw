@@ -53,7 +53,7 @@ export default function RateSetupCard({ onClose }: { onClose?: () => void } = {}
           </div>
           <h1 className="text-lg font-semibold">Connect Billing (Optional)</h1>
           <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-            BroadClaw already estimates your costs using published model rates.
+            OptimoClaw already estimates your costs using published model rates.
             Connect a billing API to compare estimates against your actual bill.
           </p>
         </div>

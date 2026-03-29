@@ -22,7 +22,7 @@ import {
 // Storage keys
 // ---------------------------------------------------------------------------
 
-const STORAGE_PREFIX = "broadclaw:device";
+const STORAGE_PREFIX = "optimoclaw:device";
 const KEY_KEYPAIR = `${STORAGE_PREFIX}:keypair`;
 const KEY_DEVICE_ID = `${STORAGE_PREFIX}:id`;
 const KEY_DEVICE_TOKEN = `${STORAGE_PREFIX}:token`;

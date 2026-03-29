@@ -49,7 +49,7 @@ const COST_LABELS: Record<string, { label: string; multiplier: string; color: st
 /**
  * Analyze cache breakdown and return a structured insight.
  *
- * Each insight is BroadClaw-lever-aware: it either points to a specific
+ * Each insight is OptimoClaw-lever-aware: it either points to a specific
  * lever the user can change, honestly says there's no lever for it, or
  * confirms things are already optimal. No dangling diagnoses.
  */
@@ -94,7 +94,7 @@ function getInsight(data: CacheBreakdownData): {
       label: "Good cache efficiency",
       status: "Already optimal",
       meaning: `${cacheReadPct.toFixed(0)}% of tokens are cache reads (10% of input cost). Most of your input is served from cache.`,
-      action: "Nothing to change in BroadClaw. This ratio naturally improves as sessions stay alive longer between conversations.",
+      action: "Nothing to change in OptimoClaw. This ratio naturally improves as sessions stay alive longer between conversations.",
       lever: null,
       color: "success",
     };

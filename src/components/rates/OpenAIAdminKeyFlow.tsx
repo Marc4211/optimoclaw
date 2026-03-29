@@ -181,7 +181,7 @@ export default function OpenAIAdminKeyFlow({
               3
             </span>
             <span className="text-muted-foreground">
-              Paste it below — BroadClaw will pull your last 30 days of usage and
+              Paste it below — OptimoClaw will pull your last 30 days of usage and
               cost
             </span>
           </li>
@@ -223,7 +223,7 @@ export default function OpenAIAdminKeyFlow({
         <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground/70">
           <Shield size={12} />
           <span>
-            Proxied through your local BroadClaw server to OpenAI&apos;s API.
+            Proxied through your local OptimoClaw server to OpenAI&apos;s API.
             Never stored on disk — only held in memory during the request.
           </span>
         </div>

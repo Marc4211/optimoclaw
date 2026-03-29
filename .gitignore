@@ -42,7 +42,7 @@ next-env.d.ts
 
 # development reference files (not for public release)
 /Enhanced BroadClaw Interface/
-/broadclaw-usage-reference/
+/usage-reference/
 GATEWAY_REFERENCE.md
 ISSUE_CACHE_INSIGHT_VOLATILITY.md
 LEVER_COPY.md

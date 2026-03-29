@@ -5,9 +5,9 @@ import { GatewayClient } from "./gateway-client";
 // Storage keys
 // ---------------------------------------------------------------------------
 
-const KEY_GATEWAYS = "broadclaw-gateways";
-const KEY_ACTIVE = "broadclaw-active-gateway";
-const KEY_LEGACY = "broadclaw-gateway"; // old single-config key — migrate on first load
+const KEY_GATEWAYS = "optimoclaw-gateways";
+const KEY_ACTIVE = "optimoclaw-active-gateway";
+const KEY_LEGACY = "optimoclaw-gateway"; // old single-config key — migrate on first load
 
 // ---------------------------------------------------------------------------
 // Migration — old single-config → new multi-gateway format

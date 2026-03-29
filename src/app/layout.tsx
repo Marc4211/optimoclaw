@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BroadClaw",
+  title: "OptimoClaw",
   description: "Performance and optimization tool for OpenClaw deployments",
 };
 

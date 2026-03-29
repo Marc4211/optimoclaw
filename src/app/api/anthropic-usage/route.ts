@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
  * Proxy for the Anthropic Admin API — fetches both usage (tokens)
  * and cost (USD) reports in parallel.
  *
- * Based on the proven pattern from broadclaw-usage-reference/claude-usage-api-route.ts.
+ * Based on the proven pattern from usage-reference/claude-usage-api-route.ts.
  *
  * The Admin key is passed in the x-admin-key header and
  * forwarded to Anthropic as x-api-key. It never touches disk.
@@ -14,7 +14,7 @@ const ANTHROPIC_API = "https://api.anthropic.com";
 const ANTHROPIC_HEADERS = (key: string) => ({
   "anthropic-version": "2023-06-01",
   "x-api-key": key,
-  "User-Agent": "BroadClaw/1.0",
+  "User-Agent": "OptimoClaw/1.0",
 });
 
 export async function GET(request: NextRequest) {
