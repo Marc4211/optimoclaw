@@ -1,20 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Plug } from "lucide-react";
 import { useGateway } from "@/contexts/GatewayContext";
 
 export default function ConnectPage() {
   const router = useRouter();
-  const { connect, connecting, error, connected, activeGateway } = useGateway();
+  const { connect, connecting, error, connected } = useGateway();
   const [name, setName] = useState("");
-  const [url, setUrl] = useState(activeGateway?.url ?? "");
-  const [token, setToken] = useState(activeGateway?.token ?? "");
+  const [url, setUrl] = useState("");
+  const [token, setToken] = useState("");
+  // Track whether THIS form submission caused the connection
+  // so we don't redirect on page load when already connected
+  const justConnected = useRef(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const gatewayName = name.trim() || `Gateway`;
+    const gatewayName = name.trim() || "Gateway";
+    justConnected.current = true;
     await connect({
       id: crypto.randomUUID(),
       name: gatewayName,
@@ -23,12 +27,11 @@ export default function ConnectPage() {
     });
   }
 
-  // Redirect on successful connection
-  useEffect(() => {
-    if (connected) {
-      router.push("/agents");
-    }
-  }, [connected, router]);
+  // Redirect only after THIS form's connection succeeds
+  if (connected && justConnected.current) {
+    justConnected.current = false;
+    router.push("/agents");
+  }
 
   return (
     <div className="flex h-full items-center justify-center p-8" data-page="connect" data-connect-status={connected ? "connected" : error ? "error" : "disconnected"}>
@@ -37,7 +40,7 @@ export default function ConnectPage() {
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
             <Plug size={24} className="text-primary" />
           </div>
-          <h1 className="text-xl font-semibold">Connect to Gateway</h1>
+          <h1 className="text-xl font-semibold">Add Gateway</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Enter your OpenClaw gateway URL and authentication token.
           </p>

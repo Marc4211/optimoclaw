@@ -1,54 +1,24 @@
 "use client";
 
-import { useRates } from "@/contexts/RatesContext";
-import { Settings, Trash2, CheckCircle2, AlertCircle, Plus } from "lucide-react";
+import { Settings, Trash2, Plug, Plus, CheckCircle2, Circle } from "lucide-react";
 import { useState } from "react";
-import RateSetupCard from "@/components/rates/RateSetupCard";
+import Link from "next/link";
+import { useGateway } from "@/contexts/GatewayContext";
 
 export default function SettingsPage() {
-  const { config, hasRates, clearRates, setRates } = useRates();
-  const [showAddSource, setShowAddSource] = useState(false);
-  const [confirmClear, setConfirmClear] = useState<string | null>(null);
+  const {
+    gateways,
+    activeGateway,
+    connected,
+    switchGateway,
+    deleteGateway,
+    disconnect,
+  } = useGateway();
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  if (showAddSource) {
-    return <RateSetupCard onClose={() => setShowAddSource(false)} />;
-  }
-
-  const providerSpend = config?.providerSpend ?? [];
-
-  // If no providerSpend but has legacy realSpend, show that
-  const legacyAnthropicConnected =
-    providerSpend.length === 0 &&
-    config?.source === "api-key" &&
-    config?.provider === "anthropic";
-
-  function handleRemoveProvider(provider: string) {
-    if (!config) return;
-
-    if (provider === "all") {
-      clearRates();
-      setConfirmClear(null);
-      return;
-    }
-
-    const remaining = providerSpend.filter((s) => s.provider !== provider);
-    if (remaining.length === 0) {
-      clearRates();
-    } else {
-      const totalMonthly = remaining.reduce((sum, s) => sum + s.monthlyEstimate, 0);
-      setRates({
-        ...config,
-        configuredAt: new Date().toISOString(),
-        realSpend: {
-          totalUsd: remaining.reduce((sum, s) => sum + s.totalUsd, 0),
-          periodDays: remaining[0]?.periodDays ?? 30,
-          monthlyEstimate: totalMonthly,
-          perModel: remaining.flatMap((s) => s.perModel ?? []),
-        },
-        providerSpend: remaining,
-      });
-    }
-    setConfirmClear(null);
+  function handleDelete(id: string) {
+    deleteGateway(id);
+    setConfirmDelete(null);
   }
 
   return (
@@ -61,141 +31,114 @@ export default function SettingsPage() {
           <div>
             <h1 className="text-lg font-semibold">Settings</h1>
             <p className="text-sm text-muted-foreground">
-              Manage billing sources and app configuration
+              Manage gateway connections
             </p>
           </div>
         </div>
 
-        {/* Billing Sources */}
+        {/* Gateway Management */}
         <section className="mt-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold">Billing Sources</h2>
-            <button
-              onClick={() => setShowAddSource(true)}
+            <h2 className="text-base font-semibold">Gateways</h2>
+            <Link
+              href="/connect"
               className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
             >
               <Plus size={14} />
-              Add source
-            </button>
+              Add Gateway
+            </Link>
           </div>
 
-          {!hasRates && providerSpend.length === 0 && !legacyAnthropicConnected && (
+          {gateways.length === 0 && (
             <div className="rounded-lg border border-border bg-surface p-6 text-center">
-              <AlertCircle size={24} className="mx-auto mb-2 text-muted-foreground" />
+              <Plug size={24} className="mx-auto mb-2 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                No billing sources connected. Add one to see actual spend in the
-                Token Optimizer.
+                No gateways connected. Add one to get started.
               </p>
             </div>
           )}
 
           <div className="space-y-3">
-            {/* Multi-provider entries */}
-            {providerSpend.map((spend) => (
-              <div
-                key={spend.provider}
-                className="flex items-center justify-between rounded-lg border border-border bg-surface p-4"
-              >
-                <div className="flex items-center gap-3">
-                  <CheckCircle2 size={16} className="text-success" />
-                  <div>
-                    <p className="text-sm font-medium">
-                      {spend.provider === "anthropic"
-                        ? "Anthropic"
-                        : spend.provider === "openai"
-                          ? "OpenAI"
-                          : spend.provider}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {spend.source === "admin-api"
-                        ? `$${spend.monthlyEstimate.toFixed(2)}/mo from Admin API`
-                        : spend.source === "free"
-                          ? "Free (local models)"
-                          : `$${spend.monthlyEstimate.toFixed(2)}/mo (manual rates)`}
-                    </p>
+            {gateways.map((gw) => {
+              const isActive = activeGateway?.id === gw.id && connected;
+              return (
+                <div
+                  key={gw.id}
+                  className={`flex items-center justify-between rounded-lg border bg-surface p-4 transition-colors ${
+                    isActive ? "border-success/30" : "border-border"
+                  }`}
+                  data-gateway={gw.id}
+                  data-active={isActive}
+                >
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    {isActive ? (
+                      <CheckCircle2 size={16} className="text-success shrink-0" />
+                    ) : (
+                      <Circle size={16} className="text-muted-foreground/30 shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {gw.name}
+                        {isActive && (
+                          <span className="ml-2 text-xs text-success">Connected</span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground/60 font-mono truncate">
+                        {gw.url}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 ml-3">
+                    {/* Switch to this gateway */}
+                    {!isActive && (
+                      <button
+                        onClick={() => switchGateway(gw.id)}
+                        className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
+                      >
+                        Connect
+                      </button>
+                    )}
+
+                    {/* Disconnect from active gateway */}
+                    {isActive && (
+                      <button
+                        onClick={() => disconnect()}
+                        className="rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
+                      >
+                        Disconnect
+                      </button>
+                    )}
+
+                    {/* Delete gateway */}
+                    {confirmDelete === gw.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">Delete?</span>
+                        <button
+                          onClick={() => handleDelete(gw.id)}
+                          className="rounded px-2 py-1 text-xs font-medium text-danger hover:bg-danger/10"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          className="rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDelete(gw.id)}
+                        className="rounded p-1.5 text-muted-foreground/40 transition-colors hover:bg-danger/10 hover:text-danger"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
-
-                {confirmClear === spend.provider ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Remove?</span>
-                    <button
-                      onClick={() => handleRemoveProvider(spend.provider)}
-                      className="rounded px-2 py-1 text-xs font-medium text-danger hover:bg-danger/10"
-                    >
-                      Yes
-                    </button>
-                    <button
-                      onClick={() => setConfirmClear(null)}
-                      className="rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      No
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setConfirmClear(spend.provider)}
-                    className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-            ))}
-
-            {/* Legacy Anthropic entry (backwards compat) */}
-            {legacyAnthropicConnected && (
-              <div className="flex items-center justify-between rounded-lg border border-border bg-surface p-4">
-                <div className="flex items-center gap-3">
-                  <CheckCircle2 size={16} className="text-success" />
-                  <div>
-                    <p className="text-sm font-medium">Anthropic</p>
-                    <p className="text-xs text-muted-foreground">
-                      ${config?.realSpend?.monthlyEstimate?.toFixed(2) ?? "0.00"}/mo
-                      from Admin API
-                    </p>
-                  </div>
-                </div>
-
-                {confirmClear === "anthropic" ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">Remove?</span>
-                    <button
-                      onClick={() => handleRemoveProvider("all")}
-                      className="rounded px-2 py-1 text-xs font-medium text-danger hover:bg-danger/10"
-                    >
-                      Yes
-                    </button>
-                    <button
-                      onClick={() => setConfirmClear(null)}
-                      className="rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground"
-                    >
-                      No
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setConfirmClear("anthropic")}
-                    className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-danger/10 hover:text-danger"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Ollama — always free */}
-            <div className="flex items-center gap-3 rounded-lg border border-border/50 bg-surface/50 p-4">
-              <div className="h-4 w-4 rounded-full border border-muted-foreground/30" />
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Ollama / Local models
-                </p>
-                <p className="text-xs text-muted-foreground/70">
-                  Always $0 — no billing setup needed
-                </p>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </section>
       </div>
