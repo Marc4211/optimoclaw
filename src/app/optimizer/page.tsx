@@ -809,6 +809,7 @@ export default function OptimizerPage() {
       {/* Sticky bottom bar — appears when changes are pending */}
       <StickyApplyBar
         changeCount={diffs.length}
+        changes={diffs}
         applying={applying}
         gatewayName={activeGateway?.name}
         onApply={handleApply}
