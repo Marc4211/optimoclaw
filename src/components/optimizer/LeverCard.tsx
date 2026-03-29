@@ -164,8 +164,84 @@ export default function LeverCard({
         </div>
       )}
 
-      {/* Non-model select lever: button group (frequency, context loading, etc.) */}
-      {lever.type === "select" && !useModelDropdown && options && (
+      {/* Heartbeat Frequency: visual timeline + toggle buttons */}
+      {lever.type === "select" && lever.key === "heartbeatFrequency" && !useModelDropdown && options && (
+        <div className="space-y-4">
+          {/* Visual Timeline — "Hour View" */}
+          <div>
+            <div className="text-[12px] text-muted-foreground/60 mb-3 font-normal">Hour View</div>
+            <div className="relative">
+              {/* Timeline Line */}
+              <div className="absolute top-5 left-5 right-5 h-[2px] bg-primary/20" />
+              {/* Time Markers */}
+              <div className="flex justify-between items-center relative">
+                {[
+                  { label: "0m", active: true }, // always active — start of cycle
+                  { label: "15m", active: value === "15m" },
+                  { label: "30m", active: value === "15m" || value === "30m" },
+                  { label: "60m", active: value === "15m" || value === "30m" || value === "60m" },
+                ].map((marker) => (
+                  <div key={marker.label} className="flex flex-col items-center">
+                    <div
+                      className={`w-10 h-10 rounded-full border flex items-center justify-center mb-2 transition-colors ${
+                        marker.active
+                          ? "bg-primary border-primary"
+                          : "bg-surface border-border"
+                      }`}
+                    >
+                      <Heart
+                        className={`w-5 h-5 ${marker.active ? "text-primary-foreground" : "text-muted-foreground/40"}`}
+                        fill={marker.active ? "currentColor" : "none"}
+                      />
+                    </div>
+                    <span className="text-[13px] text-muted-foreground">{marker.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Toggle buttons */}
+          <div className="flex flex-wrap gap-2">
+            {options.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => onChange(lever.key, option.value)}
+                data-selected={String(String(value) === option.value)}
+                aria-pressed={String(value) === option.value}
+                className={`flex-1 rounded-lg px-4 py-2.5 text-[13px] font-normal transition-all border ${
+                  String(value) === option.value
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : "bg-surface border-border text-muted-foreground hover:border-muted-foreground/30"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Cost / Performance badges */}
+          {badges && (
+            <div className="flex items-center gap-4 text-[13px]">
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Cost Impact:</span>
+                <span className="rounded px-2 py-1 bg-amber-500/10 text-amber-500 font-medium">
+                  {badges.cost}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Performance:</span>
+                <span className="rounded px-2 py-1 bg-primary/10 text-primary font-medium">
+                  {badges.perf}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Non-model select lever: button group (context loading, etc.) */}
+      {lever.type === "select" && lever.key !== "heartbeatFrequency" && !useModelDropdown && options && (
         <div className="space-y-3">
           <div className="flex flex-wrap gap-2">
             {options.map((option) => (
@@ -174,10 +250,10 @@ export default function LeverCard({
                 onClick={() => onChange(lever.key, option.value)}
                 data-selected={String(String(value) === option.value)}
                 aria-pressed={String(value) === option.value}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                className={`rounded-lg px-4 py-2 text-[14px] font-normal transition-all border ${
                   String(value) === option.value
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-surface-hover hover:text-foreground"
+                    ? "bg-primary border-primary text-primary-foreground"
+                    : "bg-surface border-border text-muted-foreground hover:border-muted-foreground/30"
                 }`}
               >
                 {option.label}
@@ -187,16 +263,16 @@ export default function LeverCard({
 
           {/* Cost / Performance badges for performance tuning levers */}
           {badges && (
-            <div className="flex items-center gap-4 text-xs">
+            <div className="flex items-center gap-4 text-[13px]">
               <div className="flex items-center gap-1.5">
                 <span className="text-muted-foreground">Cost Impact:</span>
-                <span className="rounded px-2 py-0.5 bg-amber-500/10 text-amber-500 font-medium">
+                <span className="rounded px-2 py-1 bg-amber-500/10 text-amber-500 font-medium">
                   {badges.cost}
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="text-muted-foreground">Performance:</span>
-                <span className="rounded px-2 py-0.5 bg-primary/10 text-primary font-medium">
+                <span className="rounded px-2 py-1 bg-primary/10 text-primary font-medium">
                   {badges.perf}
                 </span>
               </div>
