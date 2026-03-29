@@ -204,14 +204,10 @@ export async function POST(request: NextRequest) {
           if (fileChanged) {
             await writeFile(filePath, updatedLines.join("\n"), "utf-8");
             totalSynced++;
-            console.log(`[config-apply] Synced agent docs in ${filePath}`);
           }
         }
 
-        if (totalSynced > 0) {
-          const labels = syncOps.map((o) => o.label).join(", ");
-          console.log(`[config-apply] Updated ${totalSynced} file(s) in ${workspace}: ${labels}`);
-        }
+        // totalSynced tracked for potential future UI feedback
       } catch (err) {
         // Non-critical — don't fail the config apply if markdown sync fails
         console.warn("[config-apply] Markdown sync failed:", err);

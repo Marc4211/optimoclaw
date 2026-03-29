@@ -1,6 +1,7 @@
 {
-  "name": "broadclaw-init",
+  "name": "broadclaw",
   "version": "0.1.0",
+  "description": "Token optimizer dashboard for OpenClaw AI agent orchestration",
   "private": true,
   "scripts": {
     "dev": "next build && next start -p 3070",

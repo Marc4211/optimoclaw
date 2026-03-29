@@ -338,7 +338,6 @@ export class GatewayClient {
       (config as Record<string, unknown>).sessionDefaults = sessionDefaults;
     }
 
-    console.log("[GatewayClient] Extracted config from snapshot:", JSON.stringify(config).slice(0, 800));
     return config;
   }
 
@@ -367,7 +366,7 @@ export class GatewayClient {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       if (msg.includes("missing scope")) {
-        console.log(`[GatewayClient] ${method} missing scope — reconnecting with updated scopes`);
+        // Missing scope — reconnect with updated scopes
         await this.reconnectForScopes();
         return await this.request<T>(method, params);
       }

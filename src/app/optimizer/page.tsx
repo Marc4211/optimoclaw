@@ -86,8 +86,6 @@ function extractAgentLeverValues(
 
   const agent = agentEntry as Record<string, unknown>;
   const hb = agent.heartbeat as Record<string, unknown> | undefined;
-  console.log("[Optimizer] extractAgentLeverValues:", agentId, { model: agent.model, heartbeat: hb });
-
   const agentValues = { ...defaults };
 
   // Per-agent model — full string passthrough
@@ -223,7 +221,6 @@ function OptimizerPageInner() {
       .then((data) => {
         if (cancelled || !data.config) return;
         const cfg = data.config as Record<string, string>;
-        console.log("[Optimizer] Config from CLI:", cfg);
 
         // Check if LosslessClaw plugin is installed
         const lcmEnabled = cfg["plugins.entries.lossless-claw.enabled"];
@@ -531,9 +528,6 @@ function OptimizerPageInner() {
         profile = profileMatch[1];
       }
 
-      // Log exactly what we're sending
-      console.log("[Optimizer] Applying config changes:", { profile, changes });
-
       // Call the API route which shells out to openclaw CLI
       const res = await fetch("/api/config-apply", {
         method: "POST",
@@ -542,7 +536,6 @@ function OptimizerPageInner() {
       });
 
       const result = await res.json();
-      console.log("[Optimizer] Config apply result:", result);
 
       if (result.success) {
         setBaseConfig({ ...values });
@@ -561,9 +554,7 @@ function OptimizerPageInner() {
             const p = pm ? pm[1] : "";
             const r = await fetch(`/api/config-get?profile=${encodeURIComponent(p)}`);
             const data = await r.json();
-            if (data.config) {
-              console.log("[Optimizer] Post-apply config re-read:", data.config);
-            }
+            // Config confirmed — no-op, just verifying the write landed
           } catch { /* non-critical */ }
         }, 3000);
       } else {
