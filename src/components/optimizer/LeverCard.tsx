@@ -80,7 +80,7 @@ export default function LeverCard({
 
   return (
     <div
-      className={`rounded-lg border border-border bg-surface p-5 transition-opacity ${disabled ? "opacity-50" : dimmed ? "opacity-60" : ""}`}
+      className={`rounded-lg border border-border bg-surface p-5 transition-opacity ${disabled ? "opacity-50" : dimmed ? "opacity-20" : ""}`}
       data-lever={lever.key}
       data-value={disabled ? "disabled" : String(value)}
       data-cost-delta={hasChanged ? costDeltaPercent.toFixed(0) : null}
