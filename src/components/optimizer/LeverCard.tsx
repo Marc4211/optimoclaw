@@ -176,10 +176,10 @@ export default function LeverCard({
               {/* Time Markers */}
               <div className="flex justify-between items-center relative">
                 {[
-                  { label: "0m", active: true }, // always active — start of cycle
+                  { label: "0m", active: value !== "off" }, // start of cycle — active unless heartbeat is off
                   { label: "15m", active: value === "15m" },
-                  { label: "30m", active: value === "15m" || value === "30m" },
-                  { label: "60m", active: value === "15m" || value === "30m" || value === "60m" },
+                  { label: "30m", active: value === "30m" },
+                  { label: "60m", active: value === "60m" },
                 ].map((marker) => (
                   <div key={marker.label} className="flex flex-col items-center">
                     <div
