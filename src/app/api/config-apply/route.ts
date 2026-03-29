@@ -64,22 +64,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // --- Sync heartbeat frequency to agent workspace markdown files ---
-    // When heartbeat.every changes, search the agent's workspace for .md files
-    // that reference the old frequency and update them to the new value.
+    // --- Sync agent config changes to workspace markdown files ---
+    // When heartbeat settings (frequency or model), agent model, or other
+    // agent-scoped config changes are applied, search the agent's workspace
+    // for .md files that reference the old values and update them.
     // This keeps agent documentation (HEARTBEAT.md, AGENTS.md, etc.) in sync
     // with the actual config so agents don't have stale self-knowledge.
-    const heartbeatChanges = changes.filter(
-      (c) => c.key.endsWith(".heartbeat.every") && results.find((r) => r.key === c.key)?.ok
+
+    const agentScopedChanges = changes.filter(
+      (c) => c.key.match(/agents\.list\[\d+\]\./) && results.find((r) => r.key === c.key)?.ok
     );
 
-    for (const hbChange of heartbeatChanges) {
-      try {
-        // Extract agent index from key like "agents.list[0].heartbeat.every"
-        const idxMatch = hbChange.key.match(/agents\.list\[(\d+)\]/);
-        if (!idxMatch) continue;
-        const idx = idxMatch[1];
+    // Group changes by agent index so we only read workspace files once per agent
+    const changesByAgent = new Map<string, typeof agentScopedChanges>();
+    for (const change of agentScopedChanges) {
+      const idxMatch = change.key.match(/agents\.list\[(\d+)\]/);
+      if (!idxMatch) continue;
+      const idx = idxMatch[1];
+      const existing = changesByAgent.get(idx) ?? [];
+      existing.push(change);
+      changesByAgent.set(idx, existing);
+    }
 
+    for (const [idx, agentChanges] of changesByAgent) {
+      try {
         // Get the agent's workspace path from config
         const wsCmd = `source ~/.zshrc 2>/dev/null; openclaw ${profileFlag} config get 'agents.list[${idx}].workspace'`;
         const { stdout: wsOut } = await execAsync(wsCmd, { timeout: 10000, shell: "/bin/zsh" });
@@ -90,19 +98,89 @@ export async function POST(request: NextRequest) {
         const files = await readdir(workspace).catch(() => [] as string[]);
         const mdFiles = files.filter((f) => f.toLowerCase().endsWith(".md"));
 
-        const newFreq = String(hbChange.value); // e.g. "30m", "60m", "15m"
+        // Build list of sync operations to perform
+        const syncOps: Array<{
+          contextPattern: RegExp;
+          replacePattern: RegExp;
+          replacer: (match: string, ...args: string[]) => string;
+          label: string;
+        }> = [];
 
-        // Pattern matches frequency values like "30m", "60m", "15min", "1h", "every 30 minutes"
-        // Only in lines that contextually reference heartbeat/frequency/check-in/interval
-        const contextPattern = /\b(heartbeat|check.?in|frequency|interval|every)\b/i;
-        const freqPattern = /\b(\d+)\s*(m|min|mins|minutes|h|hr|hrs|hours)\b/gi;
+        for (const change of agentChanges) {
+          const configField = change.key.replace(/agents\.list\[\d+\]\./, "");
 
-        // Format new frequency for readable text (e.g. "30m" → "30 minutes", "1h" → "60 minutes")
-        const newMinutes = newFreq === "1h" ? 60 : parseInt(newFreq);
-        const newReadable = `${newMinutes} minutes`;
-        const newShort = `${newMinutes}m`;
+          // --- Heartbeat frequency sync ---
+          if (configField === "heartbeat.every") {
+            const newFreq = String(change.value);
+            const newMinutes = newFreq === "1h" ? 60 : parseInt(newFreq);
+            const newShort = `${newMinutes}m`;
 
-        let synced = 0;
+            syncOps.push({
+              contextPattern: /\b(heartbeat|check.?in|frequency|interval|every)\b/i,
+              replacePattern: /\b(\d+)\s*(m|min|mins|minutes|h|hr|hrs|hours)\b/gi,
+              replacer: (_match: string, num: string, unit: string) => {
+                const origMinutes = unit.startsWith("h") ? parseInt(num) * 60 : parseInt(num);
+                if (origMinutes < 5 || origMinutes > 120) return _match;
+                if (origMinutes === newMinutes) return _match;
+                if (unit === "m") return newShort;
+                if (unit.startsWith("min")) return `${newMinutes} ${unit}`;
+                if (unit.startsWith("h")) return `${newMinutes}m`;
+                return `${newMinutes}${unit}`;
+              },
+              label: `heartbeat frequency → ${newFreq}`,
+            });
+          }
+
+          // --- Heartbeat model sync ---
+          if (configField === "heartbeat.model") {
+            const newModel = String(change.value);
+            // Extract the short model name for readable replacement
+            // e.g. "anthropic/claude-haiku-4-5-20251001" → "claude-haiku-4-5"
+            const shortNew = newModel
+              .replace(/^(anthropic|openai|ollama)\//, "")
+              .replace(/-\d{8,}$/, "");
+
+            syncOps.push({
+              // Match lines mentioning heartbeat + model context
+              contextPattern: /\b(heartbeat|check.?in)\b.*\b(model|using|use|with|via)\b|\b(model|using|use|with|via)\b.*\b(heartbeat|check.?in)\b/i,
+              // Match model-like strings: provider/model-name or just model-name patterns
+              replacePattern: /\b(anthropic|openai|ollama)\/[\w.:_-]+\b|\b(claude|gpt|llama|qwen|gemma|mistral|phi)[\w.:_-]*\b/gi,
+              replacer: (match: string) => {
+                // Don't replace if it already matches the new model
+                if (newModel.includes(match) || match.includes(shortNew)) return match;
+                // Replace with the full new model string if original had provider prefix,
+                // otherwise use the short name
+                if (match.includes("/")) return newModel;
+                return shortNew;
+              },
+              label: `heartbeat model → ${shortNew}`,
+            });
+          }
+
+          // --- Primary model sync ---
+          if (configField === "model.primary") {
+            const newModel = String(change.value);
+            const shortNew = newModel
+              .replace(/^(anthropic|openai|ollama)\//, "")
+              .replace(/-\d{8,}$/, "");
+
+            syncOps.push({
+              // Match lines mentioning primary/default/main model context
+              contextPattern: /\b(primary|default|main|agent)\b.*\b(model|using|use)\b|\b(model|using|use)\b.*\b(primary|default|main|agent)\b/i,
+              replacePattern: /\b(anthropic|openai|ollama)\/[\w.:_-]+\b|\b(claude|gpt|llama|qwen|gemma|mistral|phi)[\w.:_-]*\b/gi,
+              replacer: (match: string) => {
+                if (newModel.includes(match) || match.includes(shortNew)) return match;
+                if (match.includes("/")) return newModel;
+                return shortNew;
+              },
+              label: `primary model → ${shortNew}`,
+            });
+          }
+        }
+
+        if (syncOps.length === 0) continue;
+
+        let totalSynced = 0;
 
         for (const mdFile of mdFiles) {
           const filePath = join(workspace, mdFile);
@@ -110,39 +188,29 @@ export async function POST(request: NextRequest) {
           if (!content) continue;
 
           const lines = content.split("\n");
-          let changed = false;
+          let fileChanged = false;
 
           const updatedLines = lines.map((line) => {
-            // Only touch lines that mention heartbeat/frequency context
-            if (!contextPattern.test(line)) return line;
-
-            // Replace frequency values in the line
-            const updated = line.replace(freqPattern, (match, num, unit) => {
-              const origMinutes = unit.startsWith("h") ? parseInt(num) * 60 : parseInt(num);
-              // Only replace if it looks like a heartbeat interval (5-120 min range)
-              if (origMinutes < 5 || origMinutes > 120) return match;
-              if (origMinutes === newMinutes) return match; // already correct
-
-              changed = true;
-              // Preserve the original format style
-              if (unit === "m") return newShort;
-              if (unit.startsWith("min")) return `${newMinutes} ${unit}`;
-              if (unit.startsWith("h")) return `${newMinutes}m`; // convert hours to minutes
-              return `${newMinutes}${unit}`;
-            });
-
+            let updated = line;
+            for (const op of syncOps) {
+              if (!op.contextPattern.test(updated)) continue;
+              const before = updated;
+              updated = updated.replace(op.replacePattern, op.replacer);
+              if (updated !== before) fileChanged = true;
+            }
             return updated;
           });
 
-          if (changed) {
+          if (fileChanged) {
             await writeFile(filePath, updatedLines.join("\n"), "utf-8");
-            synced++;
-            console.log(`[config-apply] Synced heartbeat frequency in ${filePath}`);
+            totalSynced++;
+            console.log(`[config-apply] Synced agent docs in ${filePath}`);
           }
         }
 
-        if (synced > 0) {
-          console.log(`[config-apply] Updated ${synced} markdown file(s) in ${workspace}`);
+        if (totalSynced > 0) {
+          const labels = syncOps.map((o) => o.label).join(", ");
+          console.log(`[config-apply] Updated ${totalSynced} file(s) in ${workspace}: ${labels}`);
         }
       } catch (err) {
         // Non-critical — don't fail the config apply if markdown sync fails
