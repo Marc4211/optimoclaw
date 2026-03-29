@@ -615,6 +615,11 @@ export default function OptimizerPage() {
                           onClick={() => {
                             setTuneMode(mode);
                             setShowTuneChooser(false);
+                            // Apply suggested values for this tune mode
+                            const suggested = tuneModes[mode].suggestedValues;
+                            if (Object.keys(suggested).length > 0) {
+                              setValues((prev) => ({ ...prev, ...suggested }));
+                            }
                           }}
                           className="whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
                         >
@@ -631,7 +636,11 @@ export default function OptimizerPage() {
                   {tuneModes[tuneMode].label}
                 </span>
                 <button
-                  onClick={() => setTuneMode(null)}
+                  onClick={() => {
+                    setTuneMode(null);
+                    // Restore lever values back to what the gateway has
+                    setValues({ ...baseConfig });
+                  }}
                   className="rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
                 >
                   Reset

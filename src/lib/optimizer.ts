@@ -207,6 +207,9 @@ export interface TuneModeDefinition {
   label: string;
   leverKeys: (keyof LeverValue)[];
   rationale: Record<string, string>;
+  /** Suggested non-model values to apply when this mode is selected.
+   *  Model levers are excluded — we don't know what models are available. */
+  suggestedValues: Partial<LeverValue>;
 }
 
 export const tuneModes: Record<TuneMode, TuneModeDefinition> = {
@@ -214,11 +217,16 @@ export const tuneModes: Record<TuneMode, TuneModeDefinition> = {
     label: "Reduce cost",
     leverKeys: ["heartbeatModel", "compactionModel", "heartbeatFrequency", "sessionContextLoading", "memoryFileScope"],
     rationale: {
-      heartbeatModel: "Heartbeats are the highest-frequency calls",
+      heartbeatModel: "Heartbeats are the highest-frequency calls — use cheapest model",
       compactionModel: "Summaries don't need a strong model",
       heartbeatFrequency: "Fewer beats = proportionally less spend",
-      sessionContextLoading: "Lean loading cuts input tokens 3–5x",
+      sessionContextLoading: "Lean loading cuts input tokens 3–5×",
       memoryFileScope: "Fewer days = fewer tokens loaded per session",
+    },
+    suggestedValues: {
+      heartbeatFrequency: "60m",
+      sessionContextLoading: "lean",
+      memoryFileScope: 3,
     },
   },
   quality: {
@@ -230,6 +238,10 @@ export const tuneModes: Record<TuneMode, TuneModeDefinition> = {
       compactionThreshold: "Higher threshold preserves more context",
       sessionContextLoading: "Full context gives agents better decisions",
     },
+    suggestedValues: {
+      compactionThreshold: 150000,
+      sessionContextLoading: "full",
+    },
   },
   speed: {
     label: "Faster responses",
@@ -239,6 +251,12 @@ export const tuneModes: Record<TuneMode, TuneModeDefinition> = {
       subagentConcurrency: "More parallel agents = faster throughput",
       rateLimitDelay: "Lower delay = faster sequential calls",
       searchBatchLimit: "Larger batches = fewer pauses in research",
+    },
+    suggestedValues: {
+      heartbeatFrequency: "15m",
+      subagentConcurrency: 4,
+      rateLimitDelay: 2,
+      searchBatchLimit: 10,
     },
   },
 };
