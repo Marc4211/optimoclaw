@@ -1,36 +1,90 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OptimoClaw
 
-## Getting Started
+Token optimizer dashboard for [OpenClaw](https://github.com/openclaw/openclaw) AI agent orchestration.
 
-First, run the development server:
+OptimoClaw connects to your local OpenClaw gateway and gives you a visual interface to understand what your agents are doing, how much they cost, and what you can tune — without editing config files by hand.
+
+## What it does
+
+**Agents** — See every agent at a glance: which model they're actually running (not what they claim), heartbeat frequency, session count, and whether anything needs attention. Click an agent to see their sessions, context utilization, and cache efficiency.
+
+**Token Optimizer** — Change agent config through visual levers: default model, heartbeat frequency and model, compaction threshold, session context loading, memory file scope, subagent concurrency, and more. See the impact before you apply. Use "Help me tune this" for guided suggestions (reduce cost, improve quality, faster responses).
+
+**Session Insights** — Context utilization and cache efficiency charts with actionable analysis. Each insight either points you to a specific lever, tells you honestly there's no lever for it, or confirms things are already optimal.
+
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) 18.17 or later
+- A running [OpenClaw](https://github.com/openclaw/openclaw) instance **on the same machine**
+- OpenClaw gateway accessible (default: `http://localhost:3069`)
+
+## Quick start
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/Marc4211/optimoclaw.git
+cd optimoclaw
+npm install
+npm run build
+npx next start -p 3070
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3070](http://localhost:3070) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Connect to your gateway
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Open OptimoClaw in your browser
+2. Click **Connect Gateway** in the sidebar
+3. Enter a name (e.g. "Local", "Production"), your gateway URL, and gateway token
+4. Click Connect
 
-## Learn More
+You can save multiple gateway connections and switch between them using the switcher at the bottom of the sidebar.
 
-To learn more about Next.js, take a look at the following resources:
+## How it works
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+OptimoClaw reads live data from your OpenClaw instance through two channels:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **WebSocket** — connects to the gateway for real-time agent status, session counts, and available models
+- **CLI** — runs `openclaw config get` and `openclaw status --usage --json` on the local machine for config values and session token data
 
-## Deploy on Vercel
+When you adjust levers in the Token Optimizer and click **Apply Changes**, OptimoClaw:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Runs `openclaw config set` for each changed value
+2. Restarts the gateway to pick up the new config
+3. Updates any agent workspace `.md` files that reference changed values (heartbeat frequency, model names) so agent self-documentation stays in sync
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+All config changes go through the OpenClaw CLI. OptimoClaw never modifies config files directly.
+
+## Development
+
+```bash
+npx next dev -p 3070
+```
+
+## Project structure
+
+```
+src/
+  app/
+    agents/          # Agent roster and per-agent detail view
+    optimizer/       # Token Optimizer (levers, routing, insights)
+    graph/           # Performance Graph (coming soon)
+    connect/         # Gateway connection form
+    api/             # Server routes for CLI and proxy calls
+  components/
+    optimizer/       # Lever cards, insight charts, apply bar
+    Sidebar.tsx      # Navigation and gateway switcher
+  lib/
+    gateway-client.ts  # WebSocket client for OpenClaw gateway
+    optimizer.ts       # Lever definitions, tune modes, presets
+    rate-card.ts       # Model pricing ($/MTok from provider pages)
+  contexts/
+    GatewayContext.tsx  # Gateway connection state provider
+```
+
+## Requirements
+
+OptimoClaw must run on the same machine as your OpenClaw instance. It shells out to the `openclaw` CLI for config reads and writes, which requires the CLI to be installed and accessible in the shell path.
+
+## License
+
+[MIT](LICENSE)
