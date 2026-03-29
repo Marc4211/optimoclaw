@@ -290,7 +290,7 @@ export default function AgentDetailPage({
         </div>
 
         <Link
-          href={`/optimizer`}
+          href={`/optimizer?agent=${encodeURIComponent(decodedName)}`}
           className="flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
         >
           <Settings2 size={13} />

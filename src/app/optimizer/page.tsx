@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { Suspense, useState, useMemo, useCallback, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { LeverValue, ContextLoadOption } from "@/types/optimizer";
 import { OpenClawConfig } from "@/types";
 import {
@@ -139,8 +140,18 @@ const MODEL_LEVER_KEYS = new Set(["defaultModel", "heartbeatModel", "compactionM
 // --- Page component ---
 
 export default function OptimizerPage() {
+  return (
+    <Suspense>
+      <OptimizerPageInner />
+    </Suspense>
+  );
+}
+
+function OptimizerPageInner() {
   const [loaded, setPageLoaded] = useState(false);
   useEffect(() => { setPageLoaded(true); }, []);
+  const searchParams = useSearchParams();
+  const agentFromUrl = searchParams.get("agent");
   const { client, connected, activeGateway, agents, availableModels } = useGateway();
   const [baseConfig, setBaseConfig] = useState<LeverValue>({ ...fallbackDefaults });
   // originalConfig: the config that generated the Actual spend — persisted to localStorage
@@ -181,13 +192,19 @@ export default function OptimizerPage() {
 
   const agentCount = connected && agents.length > 0 ? agents.length : 1;
 
-  // Default the agent selector to the default agent once agents load
+  // Initialize agent selector: prefer ?agent= URL param, fall back to default agent
   useEffect(() => {
-    if (!agentInitialized && defaultAgentId && agents.length > 0) {
-      setSelectedAgentId(defaultAgentId);
-      setAgentInitialized(true);
+    if (!agentInitialized && agents.length > 0) {
+      const urlAgent = agentFromUrl
+        ? agents.find((a) => a.name === agentFromUrl || a.id === agentFromUrl)
+        : null;
+      const initialId = urlAgent?.id ?? defaultAgentId;
+      if (initialId) {
+        setSelectedAgentId(initialId);
+        setAgentInitialized(true);
+      }
     }
-  }, [agentInitialized, defaultAgentId, agents]);
+  }, [agentInitialized, agentFromUrl, defaultAgentId, agents]);
 
   // Load real config via CLI route (bypasses WebSocket scope restrictions)
   useEffect(() => {
