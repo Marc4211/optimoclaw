@@ -36,18 +36,19 @@ function formatWindow(n: number): string {
 }
 
 /**
- * Analyze utilization and return a dynamic insight.
+ * Analyze utilization and return a structured insight.
  *
- * Each insight answers three things clearly:
- *  1. Status  — good, neutral, or a problem (conveyed by color + label)
- *  2. What it means — one plain-language sentence
- *  3. What to consider — one concrete, actionable suggestion (if any)
+ * Each insight is BroadClaw-lever-aware: it either points to a specific
+ * lever the user can change, honestly says there's no lever for it, or
+ * confirms things are already optimal. No dangling diagnoses.
  */
 function getInsight(data: ContextUtilizationData): {
   label: string;
   status: string;
   meaning: string;
   action: string;
+  /** Which lever to reference, if any */
+  lever: string | null;
   color: "success" | "warning" | "danger" | "muted";
 } {
   const avg = data.avgPercentUsed;
@@ -63,21 +64,15 @@ function getInsight(data: ContextUtilizationData): {
 
   // --- Specific: big windows barely used ---
   if (oversized.length > 0 && avg < 10) {
-    if (hasMixedWindows) {
-      return {
-        label: "Mixed window sizes",
-        status: "Worth reviewing",
-        meaning: `${oversized.length} session${oversized.length !== 1 ? "s have" : " has"} a ${formatWindow(oversized[0].contextTokens)} context window but ${oversized.length === 1 ? "is" : "are"} using less than 15% of it. Other sessions use smaller ${formatWindow(Math.min(...windowSizes))} windows.`,
-        action: "Check if the larger windows were auto-assigned by the gateway. Switching them to the smaller size would reduce cache write costs.",
-        color: "warning",
-      };
-    }
     return {
-      label: "Over-provisioned",
-      status: "Optimization opportunity",
-      meaning: `All sessions have ${formatWindow(oversized[0].contextTokens)} context windows but are only using ${avg.toFixed(0)}% on average.`,
-      action: "Reducing context window sizes would lower cache write costs — the gateway re-caches the full window on every write.",
-      color: "warning",
+      label: hasMixedWindows ? "Mixed window sizes" : "Over-provisioned",
+      status: "No BroadClaw lever for this",
+      meaning: hasMixedWindows
+        ? `${oversized.length} session${oversized.length !== 1 ? "s have" : " has"} a ${formatWindow(oversized[0].contextTokens)} context window but ${oversized.length === 1 ? "is" : "are"} using less than 15% of it. Other sessions use smaller ${formatWindow(Math.min(...windowSizes))} windows.`
+        : `All sessions have ${formatWindow(oversized[0].contextTokens)} context windows but are only using ${avg.toFixed(0)}% on average.`,
+      action: "Context window size is set by the model and gateway, not by BroadClaw. The larger windows may have been auto-assigned. This is informational — there's no config lever to change here.",
+      lever: null,
+      color: "muted",
     };
   }
 
@@ -85,11 +80,10 @@ function getInsight(data: ContextUtilizationData): {
   if (avg < 15) {
     return {
       label: "Low utilization",
-      status: "This is normal for short or new sessions",
+      status: "Normal for short or new sessions",
       meaning: `Your sessions are using about ${avg.toFixed(0)}% of their context windows on average. Conversations haven't grown large yet.`,
-      action: hasMixedWindows
-        ? `You have mixed window sizes (${windowSizes.sort((a, b) => b - a).map(formatWindow).join(" and ")}). If sessions consistently stay this low, smaller windows would reduce cache costs.`
-        : "No action needed unless utilization stays this low over time — that would suggest the context windows are larger than necessary.",
+      action: "Nothing to change in BroadClaw. Context utilization grows naturally as conversations get longer. This is just a snapshot of current session state.",
+      lever: null,
       color: "muted",
     };
   }
@@ -98,9 +92,10 @@ function getInsight(data: ContextUtilizationData): {
   if (avg < 40) {
     return {
       label: "Good headroom",
-      status: "Looking good",
+      status: "Already optimal",
       meaning: `Sessions are using about ${avg.toFixed(0)}% of their context windows — plenty of room for conversations to grow before compaction kicks in.`,
-      action: "No changes needed. Current window sizes match your workload well.",
+      action: "Nothing to change. Current utilization leaves healthy room for conversation growth.",
+      lever: null,
       color: "success",
     };
   }
@@ -109,9 +104,10 @@ function getInsight(data: ContextUtilizationData): {
   if (avg < 75) {
     return {
       label: "Well utilized",
-      status: "Looking good",
+      status: "Already optimal",
       meaning: `Context windows are ${avg.toFixed(0)}% utilized — a good balance between capacity and efficiency.`,
-      action: "Consider tuning the Compaction Threshold (in Performance Tuning below) to control when long conversations get summarized.",
+      action: "You can tune the Compaction Threshold below to control when long conversations get summarized. Lower threshold = earlier summarization, higher = more context preserved.",
+      lever: "compactionThreshold",
       color: "success",
     };
   }
@@ -120,9 +116,10 @@ function getInsight(data: ContextUtilizationData): {
   if (avg < 90) {
     return {
       label: "Running warm",
-      status: "Keep an eye on this",
-      meaning: `Sessions are using ${avg.toFixed(0)}% of their context windows. Compaction will start triggering more frequently.`,
-      action: "Consider increasing context window sizes or lowering the Compaction Threshold to summarize earlier and avoid mid-conversation quality drops.",
+      status: "BroadClaw lever available",
+      meaning: `Sessions are using ${avg.toFixed(0)}% of their context windows. Compaction will start triggering more frequently as conversations grow.`,
+      action: "Lower the Compaction Threshold in Performance Tuning below. This makes the gateway summarize earlier, freeing up context space before sessions hit the wall. Current quality may shift slightly as older context gets compressed.",
+      lever: "compactionThreshold",
       color: "warning",
     };
   }
@@ -130,9 +127,10 @@ function getInsight(data: ContextUtilizationData): {
   // --- Near capacity (90%+) ---
   return {
     label: "Near capacity",
-    status: "Action recommended",
-    meaning: `Context windows are ${avg.toFixed(0)}% full. Sessions are likely hitting compaction frequently, which can cause context loss.`,
-    action: "Increase context window sizes, enable more aggressive session pruning, or lower heartbeat frequency to reduce how fast context fills up.",
+    status: "BroadClaw lever available",
+    meaning: `Context windows are ${avg.toFixed(0)}% full. Sessions are likely hitting compaction frequently, which can cause context loss and adds summarization token costs.`,
+    action: "Lower the Compaction Threshold in Performance Tuning below to summarize earlier. You can also reduce Heartbeat Frequency — fewer heartbeats means less context accumulation per hour.",
+    lever: "compactionThreshold",
     color: "danger",
   };
 }

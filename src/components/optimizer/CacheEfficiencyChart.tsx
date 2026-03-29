@@ -49,16 +49,17 @@ const COST_LABELS: Record<string, { label: string; multiplier: string; color: st
 /**
  * Analyze cache breakdown and return a structured insight.
  *
- * Each insight answers three things:
- *  1. Status  — good, neutral, or a problem
- *  2. What it means — one plain-language sentence
- *  3. What to consider — one concrete, actionable suggestion
+ * Each insight is BroadClaw-lever-aware: it either points to a specific
+ * lever the user can change, honestly says there's no lever for it, or
+ * confirms things are already optimal. No dangling diagnoses.
  */
 function getInsight(data: CacheBreakdownData): {
   label: string;
   status: string;
   meaning: string;
   action: string;
+  /** Which lever to reference, if any — used for future "jump to lever" linking */
+  lever: string | null;
   color: "success" | "warning" | "danger" | "muted";
 } {
   if (data.tokenTotal === 0) {
@@ -67,6 +68,7 @@ function getInsight(data: CacheBreakdownData): {
       status: "Waiting for sessions",
       meaning: "No active sessions with token data available.",
       action: "Data will appear once agents start running.",
+      lever: null,
       color: "muted",
     };
   }
@@ -78,9 +80,10 @@ function getInsight(data: CacheBreakdownData): {
   if (cacheReadPct > 90) {
     return {
       label: "Excellent cache efficiency",
-      status: "This is ideal",
+      status: "Already optimal",
       meaning: `${cacheReadPct.toFixed(0)}% of your tokens are cache reads — the cheapest token type at just 10% of the base input price.`,
-      action: "No changes needed. Your sessions are heavily leveraging cached context.",
+      action: "Nothing to change. This is the best-case scenario for cache efficiency.",
+      lever: null,
       color: "success",
     };
   }
@@ -89,9 +92,10 @@ function getInsight(data: CacheBreakdownData): {
   if (cacheReadPct > 60) {
     return {
       label: "Good cache efficiency",
-      status: "Looking good",
+      status: "Already optimal",
       meaning: `${cacheReadPct.toFixed(0)}% of tokens are cache reads (10% of input cost). Most of your input is served from cache.`,
-      action: "Longer-lived sessions tend to improve this ratio further, since more messages hit warm cache instead of re-caching.",
+      action: "Nothing to change in BroadClaw. This ratio naturally improves as sessions stay alive longer between conversations.",
+      lever: null,
       color: "success",
     };
   }
@@ -99,31 +103,34 @@ function getInsight(data: CacheBreakdownData): {
   // High cache writes (>20%)
   if (cacheWritePct > 20) {
     return {
-      label: "High cache write ratio",
-      status: "Worth optimizing",
-      meaning: `${cacheWritePct.toFixed(0)}% of tokens are cache writes, which cost 1.25× the base input price. This usually means sessions are frequently refreshing or restarting.`,
-      action: "Longer session lifetimes or enabling cache-TTL pruning can shift more tokens from expensive writes to cheap reads.",
-      color: "warning",
+      label: "Write-heavy snapshot",
+      status: "Likely transient",
+      meaning: `${cacheWritePct.toFixed(0)}% of tokens are cache writes (1.25× input cost). This is normal when sessions have recently started — cache gets written once, then subsequent messages read from it at 10% cost.`,
+      action: "Check again after a few exchanges. If this persists across multiple checks, Session Context Loading and Memory File Scope control how much gets written per session start, and Heartbeat Frequency controls how often sessions restart.",
+      lever: null,
+      color: "muted",
     };
   }
 
   // Low cache hit rate (<40% reads)
   if (cacheReadPct < 40) {
     return {
-      label: "Low cache utilization",
-      status: "Room for improvement",
-      meaning: `Only ${cacheReadPct.toFixed(0)}% of tokens are cache reads. Most input is being sent fresh at full price.`,
-      action: "Check that prompt caching is enabled and sessions persist long enough to benefit. Each new session starts cold and must re-cache everything.",
-      color: "warning",
+      label: "Low cache reads",
+      status: "Likely transient",
+      meaning: `Only ${cacheReadPct.toFixed(0)}% of tokens are cache reads. This is typical right after sessions start — the ratio shifts toward reads as conversations mature and subsequent messages hit warm cache.`,
+      action: "Check again after a few exchanges. If this persists, Heartbeat Frequency and Session Context Loading in Performance Tuning below affect how often sessions cold-start and how much context each start loads.",
+      lever: null,
+      color: "muted",
     };
   }
 
   // Moderate (40–60% reads, writes under 20%)
   return {
     label: "Moderate caching",
-    status: "Functional but could be better",
-    meaning: `${cacheReadPct.toFixed(0)}% of tokens are cache reads, ${cacheWritePct.toFixed(0)}% are cache writes. A decent portion of input is cached, but there's room to shift more toward reads.`,
-    action: "Longer session lifetimes and tuning cache TTL configuration can push more tokens to the cheapest tier (cache reads at 10% of input cost).",
+    status: "Normal for active sessions",
+    meaning: `${cacheReadPct.toFixed(0)}% cache reads, ${cacheWritePct.toFixed(0)}% cache writes. A mix of warm and cold cache — typical for sessions with moderate activity.`,
+    action: "This ratio shifts toward more cache reads as sessions stay alive longer between interactions.",
+    lever: null,
     color: "muted",
   };
 }
@@ -317,7 +324,8 @@ export default function CacheEfficiencyChart({ data }: Props) {
       </div>
 
       <p className="mt-3 text-[10px] text-muted-foreground/40">
-        {formatTokens(data.tokenTotal)} total tokens across active sessions
+        {formatTokens(data.tokenTotal)} total tokens across active sessions ·
+        Cache ratio shifts naturally as sessions mature — check multiple times before acting
       </p>
     </div>
   );
