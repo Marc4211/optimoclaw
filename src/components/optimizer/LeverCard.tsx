@@ -176,7 +176,7 @@ export default function LeverCard({
               {/* Time Markers */}
               <div className="flex justify-between items-center relative">
                 {[
-                  { label: "0m", active: value !== "off" }, // start of cycle — active unless heartbeat is off
+                  { label: "0m", active: false },
                   { label: "15m", active: value === "15m" },
                   { label: "30m", active: value === "30m" },
                   { label: "60m", active: value === "60m" },

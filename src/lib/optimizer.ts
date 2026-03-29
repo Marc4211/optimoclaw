@@ -40,9 +40,9 @@ export const levers: LeverDefinition[] = [
     type: "select",
     options: [
       { value: "off", label: "Off" },
-      { value: "60m", label: "Every 60 min" },
-      { value: "30m", label: "Every 30 min" },
       { value: "15m", label: "Every 15 min" },
+      { value: "30m", label: "Every 30 min" },
+      { value: "60m", label: "Every 60 min" },
     ],
     configPath: "agents.defaults.heartbeat.every",
   },
