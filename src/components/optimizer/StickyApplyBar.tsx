@@ -48,7 +48,7 @@ export default function StickyApplyBar({
   if (changeCount === 0 && !applying) return null;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-surface/95 backdrop-blur-sm">
+    <div className="fixed bottom-0 left-56 right-0 z-40 border-t border-border bg-surface/95 backdrop-blur-sm">
       {/* Expanded change summary — slides up above the bar */}
       {expanded && !applying && changes.length > 0 && (
         <div className="mx-auto max-w-5xl border-b border-border/50 px-8 py-3">
