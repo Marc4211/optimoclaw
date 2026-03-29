@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Bot, Plug, Heart, Cpu, Layers, ChevronRight } from "lucide-react";
+import { Bot, Plug, Heart, Cpu, ChevronRight, CircleAlert } from "lucide-react";
 import { Agent, OpenClawConfig } from "@/types";
 import { useGateway } from "@/contexts/GatewayContext";
 import EmptyState from "@/components/EmptyState";
@@ -10,20 +10,14 @@ import EmptyState from "@/components/EmptyState";
 const statusStyles: Record<Agent["status"], { dot: string; label: string }> = {
   online: { dot: "bg-success", label: "Online" },
   idle: { dot: "bg-warning", label: "Idle" },
-  offline: { dot: "bg-muted-foreground", label: "Offline" },
+  offline: { dot: "bg-muted-foreground/40", label: "Offline" },
 };
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
 
 /** Shorten model strings: "anthropic/claude-sonnet-4-6-20260320" → "Claude Sonnet 4.6" */
 function shortModel(v: string): string {
   const stripped = v
     .replace(/^(anthropic|openai|ollama)\//, "")
-    .replace(/-\d{8}$/, ""); // strip date suffix
+    .replace(/-\d{8}$/, "");
   return stripped
     .replace(/^claude-/, "Claude ")
     .replace(/^gpt-/, "GPT-")
@@ -34,43 +28,74 @@ function shortModel(v: string): string {
     .trim();
 }
 
-/** Format heartbeat frequency: "60m" → "Every 60 min", "off" → "Off" */
 function formatFreq(v: string | undefined): string {
   if (!v || v === "off") return "Off";
   const m = v.match(/^(\d+)m$/);
-  return m ? `Every ${m[1]} min` : v;
+  return m ? `Every ${m[1]}min` : v;
 }
 
-interface SessionSummaryByAgent {
-  agentId: string;
+interface AgentSessionData {
   sessionCount: number;
-  totalTokens: number;
   avgContextPercent: number;
+  cacheReadPercent: number;
+}
+
+/**
+ * Determine a signal for "anything worth looking at?"
+ * Returns null (nothing notable), "amber", or "green".
+ */
+function getSignal(
+  sessions: AgentSessionData | undefined
+): { color: "green" | "amber"; label: string } | null {
+  if (!sessions || sessions.sessionCount === 0) return null;
+
+  // Context running warm (>75%) — amber
+  if (sessions.avgContextPercent > 75) {
+    return {
+      color: "amber",
+      label: `Context ${sessions.avgContextPercent.toFixed(0)}% full`,
+    };
+  }
+
+  // Low cache efficiency (<30% reads with enough sessions) — amber
+  if (sessions.cacheReadPercent < 30 && sessions.cacheReadPercent > 0) {
+    return {
+      color: "amber",
+      label: `Cache ${sessions.cacheReadPercent.toFixed(0)}% reads`,
+    };
+  }
+
+  // Everything looks good
+  if (sessions.avgContextPercent > 0) {
+    return { color: "green", label: "Healthy" };
+  }
+
+  return null;
 }
 
 export default function AgentsPage() {
   const { connected, agents, client } = useGateway();
   const [config, setConfig] = useState<OpenClawConfig | null>(null);
-  const [sessionsByAgent, setSessionsByAgent] = useState<Map<string, SessionSummaryByAgent>>(new Map());
+  const [sessionsByAgent, setSessionsByAgent] = useState<
+    Map<string, AgentSessionData>
+  >(new Map());
 
-  // Fetch config for heartbeat/model details
+  // Fetch config
   useEffect(() => {
     if (!connected || !client) return;
     let cancelled = false;
-
     fetch("/api/config-get?key=agents")
       .then((r) => r.json())
       .then((data) => {
-        if (cancelled) return;
-        const cfg = data.config ?? data;
-        setConfig(cfg as OpenClawConfig);
+        if (!cancelled) setConfig((data.config ?? data) as OpenClawConfig);
       })
       .catch(() => {});
-
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [connected, client]);
 
-  // Fetch session data for per-agent summaries
+  // Fetch session data
   useEffect(() => {
     if (!connected || !client) return;
     let cancelled = false;
@@ -85,42 +110,67 @@ export default function AgentsPage() {
         if (cancelled || !data.sessions) return;
 
         // Aggregate per agent
-        const map = new Map<string, SessionSummaryByAgent>();
+        const counts = new Map<
+          string,
+          {
+            sessions: number;
+            contextSum: number;
+            contextCount: number;
+            cacheRead: number;
+            cacheInput: number;
+          }
+        >();
+
         for (const s of data.sessions as Array<{
           agentId: string;
-          totalTokens: number;
           percentUsed: number | null;
+          cacheRead: number;
+          inputTokens: number;
+          cacheWrite: number;
           totalTokensFresh: boolean;
         }>) {
-          const existing = map.get(s.agentId);
-          if (existing) {
-            existing.sessionCount += 1;
-            if (s.totalTokensFresh) existing.totalTokens += s.totalTokens;
-            if (s.percentUsed != null) {
-              // Running average
-              existing.avgContextPercent =
-                (existing.avgContextPercent * (existing.sessionCount - 1) + s.percentUsed) /
-                existing.sessionCount;
-            }
-          } else {
-            map.set(s.agentId, {
-              agentId: s.agentId,
-              sessionCount: 1,
-              totalTokens: s.totalTokensFresh ? s.totalTokens : 0,
-              avgContextPercent: s.percentUsed ?? 0,
-            });
+          const existing = counts.get(s.agentId) ?? {
+            sessions: 0,
+            contextSum: 0,
+            contextCount: 0,
+            cacheRead: 0,
+            cacheInput: 0,
+          };
+          existing.sessions += 1;
+          if (s.percentUsed != null) {
+            existing.contextSum += s.percentUsed;
+            existing.contextCount += 1;
           }
+          if (s.totalTokensFresh) {
+            existing.cacheRead += s.cacheRead;
+            existing.cacheInput +=
+              s.cacheRead + s.cacheWrite + s.inputTokens;
+          }
+          counts.set(s.agentId, existing);
+        }
+
+        const map = new Map<string, AgentSessionData>();
+        for (const [id, c] of counts) {
+          map.set(id, {
+            sessionCount: c.sessions,
+            avgContextPercent:
+              c.contextCount > 0 ? c.contextSum / c.contextCount : 0,
+            cacheReadPercent:
+              c.cacheInput > 0 ? (c.cacheRead / c.cacheInput) * 100 : 0,
+          });
         }
         setSessionsByAgent(map);
       })
       .catch(() => {});
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [connected, client]);
 
-  // Determine default agent
-  const defaultAgentId =
-    (client?.snapshot?.sessionDefaults as Record<string, unknown>)?.defaultAgentId as string | undefined;
+  const defaultAgentId = (
+    client?.snapshot?.sessionDefaults as Record<string, unknown>
+  )?.defaultAgentId as string | undefined;
 
   if (!connected) {
     return (
@@ -153,9 +203,9 @@ export default function AgentsPage() {
     );
   }
 
-  // Merge config data with agent list
   const agentConfigs = config?.agents?.list ?? [];
   const defaults = config?.agents?.defaults;
+  const defaultModelPrimary = defaults?.model?.primary;
 
   return (
     <div className="p-8" data-page="agents">
@@ -167,14 +217,18 @@ export default function AgentsPage() {
         </p>
       </div>
 
-      <div className="grid gap-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {agents.map((agent) => {
           const status = statusStyles[agent.status] ?? statusStyles.offline;
           const agentCfg = agentConfigs.find((a) => a.name === agent.name);
-          const model = agentCfg?.model ?? defaults?.model?.primary ?? agent.model;
-          const heartbeat = agentCfg?.heartbeat?.every ?? defaults?.heartbeat?.every;
+          const model = agentCfg?.model ?? defaultModelPrimary ?? agent.model;
+          const hasModelOverride = !!agentCfg?.model;
+          const heartbeat =
+            agentCfg?.heartbeat?.every ?? defaults?.heartbeat?.every;
           const sessions = sessionsByAgent.get(agent.name);
-          const isDefault = agent.id === defaultAgentId || agent.name === defaultAgentId;
+          const isDefault =
+            agent.id === defaultAgentId || agent.name === defaultAgentId;
+          const signal = getSignal(sessions);
 
           return (
             <Link
@@ -183,70 +237,88 @@ export default function AgentsPage() {
               data-agent-id={agent.id}
               data-agent-name={agent.name}
               data-agent-status={agent.status}
-              data-agent-model={model}
-              className="group flex items-center justify-between rounded-lg border border-border bg-surface p-4 transition-colors hover:border-primary/30 hover:bg-surface-hover"
+              className="group flex flex-col rounded-xl border border-border bg-surface p-5 transition-colors hover:border-primary/30 hover:bg-surface-hover"
             >
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
-                  <Bot size={18} className="text-muted-foreground" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium">{agent.name}</p>
-                    {isDefault && (
-                      <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
-                        default
+              {/* Header: avatar + name + status */}
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted">
+                    <Bot size={20} className="text-muted-foreground" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold">{agent.name}</span>
+                      {isDefault && (
+                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                          default
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1.5">
+                      <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />
+                      <span className="text-[11px] text-muted-foreground">
+                        {status.label}
+                        {sessions && sessions.sessionCount > 0 && (
+                          <> · {sessions.sessionCount} session{sessions.sessionCount !== 1 ? "s" : ""}</>
+                        )}
                       </span>
-                    )}
-                    <span className={`h-2 w-2 rounded-full ${status.dot}`} />
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Cpu size={11} />
-                      {shortModel(model)}
-                    </span>
-                    {heartbeat && (
-                      <span className="flex items-center gap-1">
-                        <Heart size={11} />
-                        {formatFreq(heartbeat)}
-                      </span>
-                    )}
+                    </div>
                   </div>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-5">
-                {/* Sessions */}
-                <div className="text-right">
-                  <p className="font-mono text-sm">{sessions?.sessionCount ?? agent.sessionCount}</p>
-                  <p className="text-[10px] text-muted-foreground">sessions</p>
-                </div>
-
-                {/* Tokens */}
-                <div className="text-right">
-                  <p className="font-mono text-sm">
-                    {formatTokens(sessions?.totalTokens ?? agent.tokenUsage)}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">tokens</p>
-                </div>
-
-                {/* Context utilization */}
-                {sessions && sessions.avgContextPercent > 0 ? (
-                  <div className="text-right">
-                    <p className="font-mono text-sm">
-                      {sessions.avgContextPercent.toFixed(0)}%
-                    </p>
-                    <p className="text-[10px] text-muted-foreground">context</p>
-                  </div>
-                ) : (
-                  <div className="w-12" /> // placeholder for alignment
-                )}
-
                 <ChevronRight
                   size={16}
-                  className="text-muted-foreground/30 transition-colors group-hover:text-primary"
+                  className="mt-1 text-muted-foreground/20 transition-colors group-hover:text-primary"
                 />
               </div>
+
+              {/* What is it actually using? — the trust layer */}
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Cpu size={12} />
+                    Model
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs font-medium">
+                    {shortModel(model)}
+                    <span
+                      className={`rounded px-1 py-px text-[9px] ${
+                        hasModelOverride
+                          ? "bg-primary/10 text-primary"
+                          : "bg-muted text-muted-foreground/50"
+                      }`}
+                    >
+                      {hasModelOverride ? "override" : "inherited"}
+                    </span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Heart size={12} />
+                    Heartbeat
+                  </span>
+                  <span className="text-xs font-medium">
+                    {formatFreq(heartbeat)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Signal: anything worth looking at? */}
+              {signal && (
+                <div
+                  className={`mt-4 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11px] font-medium ${
+                    signal.color === "amber"
+                      ? "bg-warning/10 text-warning"
+                      : "bg-success/10 text-success"
+                  }`}
+                >
+                  {signal.color === "amber" ? (
+                    <CircleAlert size={12} />
+                  ) : (
+                    <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                  )}
+                  {signal.label}
+                </div>
+              )}
             </Link>
           );
         })}
