@@ -1,5 +1,7 @@
 "use client";
 
+import { Zap, CheckCircle2 } from "lucide-react";
+
 export interface CacheBreakdownData {
   totalInput: number;
   totalOutput: number;
@@ -23,26 +25,24 @@ function formatTokens(n: number): string {
 }
 
 /** Token type cost multipliers relative to base input price */
-const COST_LABELS: Record<string, { label: string; multiplier: string; color: string }> = {
+const COST_LABELS: Record<string, { label: string; multiplier: string; color: string; stroke: string }> = {
   cacheRead: {
     label: "Cache Read",
     multiplier: "0.1x input cost",
-    color: "bg-emerald-400/80",
+    color: "bg-emerald-500",
+    stroke: "rgb(16 185 129)",
   },
   cacheWrite: {
     label: "Cache Write",
     multiplier: "1.25x input cost",
-    color: "bg-amber-400/80",
-  },
-  freshInput: {
-    label: "Fresh Input",
-    multiplier: "1x input cost",
-    color: "bg-blue-400/80",
+    color: "bg-orange-500",
+    stroke: "rgb(249 115 22)",
   },
   output: {
     label: "Output",
     multiplier: "varies by model",
-    color: "bg-violet-400/80",
+    color: "bg-gray-600",
+    stroke: "rgb(107 114 128)",
   },
 };
 
@@ -113,51 +113,70 @@ export default function CacheEfficiencyChart({ data }: Props) {
 
   const insight = getInsight(data);
 
-  // Build segments for the stacked bar
+  // Build donut segments: cache read, cache write, output
+  // Combine freshInput into cacheWrite for donut (both are non-cached input costs)
+  // or keep them separate — here we show the three main segments matching the reference
+  const donutTotal = data.totalCacheRead + data.totalCacheWrite + data.totalOutput;
+  const cacheReadFrac = donutTotal > 0 ? data.totalCacheRead / donutTotal : 0;
+  const cacheWriteFrac = donutTotal > 0 ? data.totalCacheWrite / donutTotal : 0;
+  const outputFrac = donutTotal > 0 ? data.totalOutput / donutTotal : 0;
+
+  const R = 70;
+  const CIRCUMFERENCE = 2 * Math.PI * R;
+
+  // Segments drawn clockwise from top (offset by -25% to start at 12 o'clock)
   const segments = [
-    {
-      key: "cacheRead",
-      percent: data.cacheReadPercent,
-      tokens: data.totalCacheRead,
-      ...COST_LABELS.cacheRead,
-    },
-    {
-      key: "cacheWrite",
-      percent: data.cacheWritePercent,
-      tokens: data.totalCacheWrite,
-      ...COST_LABELS.cacheWrite,
-    },
-    {
-      key: "freshInput",
-      percent: data.freshInputPercent,
-      tokens: data.totalInput,
-      ...COST_LABELS.freshInput,
-    },
-    {
-      key: "output",
-      percent: data.outputPercent,
-      tokens: data.totalOutput,
-      ...COST_LABELS.output,
-    },
-  ].filter((s) => s.percent > 0.5); // Only show segments with meaningful %
+    { key: "cacheRead", frac: cacheReadFrac, tokens: data.totalCacheRead, ...COST_LABELS.cacheRead },
+    { key: "cacheWrite", frac: cacheWriteFrac, tokens: data.totalCacheWrite, ...COST_LABELS.cacheWrite },
+    { key: "output", frac: outputFrac, tokens: data.totalOutput, ...COST_LABELS.output },
+  ].filter((s) => s.frac > 0.005);
 
-  const insightBorder = {
-    success: "border-emerald-500/30",
-    warning: "border-amber-500/30",
-    danger: "border-red-500/30",
-    muted: "border-border",
-  }[insight.color];
+  // Calculate stroke-dasharray and stroke-dashoffset for each segment
+  let accumulatedFrac = 0;
+  const arcs = segments.map((seg) => {
+    const dashLen = CIRCUMFERENCE * seg.frac;
+    const gapLen = CIRCUMFERENCE - dashLen;
+    const offset = CIRCUMFERENCE * (0.25 - accumulatedFrac);
+    accumulatedFrac += seg.frac;
+    return { ...seg, dashLen, gapLen, offset };
+  });
 
-  const insightDot = {
-    success: "bg-emerald-400",
-    warning: "bg-amber-400",
-    danger: "bg-red-400",
-    muted: "bg-muted-foreground",
-  }[insight.color];
+  const insightColorMap = {
+    success: {
+      border: "border-emerald-500/20",
+      bg: "bg-emerald-500/5",
+      icon: "text-emerald-400",
+      heading: "text-emerald-300",
+      body: "text-emerald-300/70",
+    },
+    warning: {
+      border: "border-amber-500/20",
+      bg: "bg-amber-500/5",
+      icon: "text-amber-400",
+      heading: "text-amber-300",
+      body: "text-amber-300/70",
+    },
+    danger: {
+      border: "border-red-500/20",
+      bg: "bg-red-500/5",
+      icon: "text-red-400",
+      heading: "text-red-300",
+      body: "text-red-300/70",
+    },
+    muted: {
+      border: "border-border",
+      bg: "bg-surface/50",
+      icon: "text-muted-foreground",
+      heading: "text-foreground/80",
+      body: "text-muted-foreground/70",
+    },
+  };
+
+  const insightStyles = insightColorMap[insight.color];
 
   return (
     <div
-      className="rounded-lg border border-border bg-surface p-4"
+      className="rounded-lg border border-border bg-surface p-6"
       data-section="cache-efficiency"
       data-cache-read-percent={data.cacheReadPercent.toFixed(1)}
       data-cache-write-percent={data.cacheWritePercent.toFixed(1)}
@@ -172,72 +191,98 @@ export default function CacheEfficiencyChart({ data }: Props) {
       data-insight={insight.detail}
       aria-label={`Cache efficiency: ${data.cacheReadPercent.toFixed(0)}% cache reads, ${data.cacheWritePercent.toFixed(0)}% cache writes, ${data.freshInputPercent.toFixed(0)}% fresh input, ${data.outputPercent.toFixed(0)}% output. ${insight.label}: ${insight.detail}`}
     >
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-muted-foreground">
-          Cache Efficiency
-        </p>
-        <span className="font-mono text-lg font-semibold text-foreground">
-          {data.cacheReadPercent.toFixed(0)}%
-          <span className="ml-1 text-xs font-normal text-muted-foreground">cached</span>
-        </span>
-      </div>
-
-      {/* Stacked bar */}
-      <div className="mt-3 flex h-3 w-full overflow-hidden rounded-full bg-muted/20">
-        {segments.map((seg) => (
-          <div
-            key={seg.key}
-            className={`${seg.color} transition-all`}
-            style={{ width: `${seg.percent}%` }}
-            title={`${seg.label}: ${formatTokens(seg.tokens)} (${seg.percent.toFixed(1)}%)`}
-          />
-        ))}
-      </div>
-
-      {/* Legend */}
-      <div className="mt-2.5 grid grid-cols-2 gap-x-4 gap-y-1.5" data-list="cache-segments">
-        {segments.map((seg) => (
-          <div
-            key={seg.key}
-            className="flex items-center gap-2"
-            data-token-type={seg.key}
-            data-tokens={seg.tokens}
-            data-percent={seg.percent.toFixed(1)}
-            data-cost-multiplier={seg.multiplier}
-            aria-label={`${seg.label}: ${formatTokens(seg.tokens)} tokens (${seg.percent.toFixed(1)}%), ${seg.multiplier}`}
-          >
-            <div className={`h-2 w-2 shrink-0 rounded-sm ${seg.color}`} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline justify-between gap-1">
-                <span className="truncate text-[11px] text-foreground/80">
-                  {seg.label}
-                </span>
-                <span className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
-                  {formatTokens(seg.tokens)}
-                </span>
-              </div>
-              <span className="text-[9px] text-muted-foreground/40">
-                {seg.multiplier}
-              </span>
-            </div>
+      {/* Header: title + large cached % with icon */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-[15px] text-muted-foreground mb-2 font-normal">
+            Cache Efficiency
+          </h3>
+          <div className="flex items-baseline gap-2">
+            <span className="text-[32px] font-normal text-foreground">
+              {data.cacheReadPercent.toFixed(0)}%
+            </span>
+            <span className="text-[13px] text-muted-foreground/60">cached</span>
           </div>
-        ))}
-      </div>
-
-      {/* Dynamic insight */}
-      <div className={`mt-3 rounded-md border ${insightBorder} bg-surface/50 px-3 py-2`}>
-        <div className="flex items-center gap-1.5">
-          <div className={`h-1.5 w-1.5 rounded-full ${insightDot}`} />
-          <span className="text-xs font-medium text-foreground/80">
-            {insight.label}
-          </span>
         </div>
-        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground/70">
-          {insight.detail}
-        </p>
+        <div className="w-10 h-10 rounded-md bg-muted/10 flex items-center justify-center border border-border">
+          <Zap className="w-5 h-5 text-muted-foreground" />
+        </div>
       </div>
 
-      <p className="mt-2 text-[10px] text-muted-foreground/40">
+      {/* Donut Chart and Legend */}
+      <div className="flex items-start gap-8 mb-6" data-list="cache-segments">
+        {/* SVG Donut */}
+        <div className="relative w-40 h-40 flex-shrink-0">
+          <svg className="w-full h-full" viewBox="0 0 160 160">
+            {arcs.map((arc) => (
+              <circle
+                key={arc.key}
+                cx="80"
+                cy="80"
+                r={R}
+                fill="none"
+                stroke={arc.stroke}
+                strokeWidth="20"
+                strokeDasharray={`${arc.dashLen} ${arc.gapLen}`}
+                strokeDashoffset={arc.offset}
+                className={arc.key === "output" ? "opacity-60" : "opacity-80"}
+              />
+            ))}
+            {/* Center hole — uses surface color for theme compatibility */}
+            <circle
+              cx="80"
+              cy="80"
+              r="50"
+              className="fill-surface"
+            />
+          </svg>
+        </div>
+
+        {/* Legend */}
+        <div className="flex-1 space-y-3 pt-2">
+          {arcs.map((seg) => (
+            <div
+              key={seg.key}
+              className="flex items-start justify-between"
+              data-token-type={seg.key}
+              data-tokens={seg.tokens}
+              data-percent={(seg.frac * 100).toFixed(1)}
+              data-cost-multiplier={seg.multiplier}
+              aria-label={`${seg.label}: ${formatTokens(seg.tokens)} tokens (${(seg.frac * 100).toFixed(1)}%), ${seg.multiplier}`}
+            >
+              <div className="flex items-center gap-2">
+                <div className={`w-3 h-3 rounded-full ${seg.color} flex-shrink-0`} />
+                <p className="text-[13px] text-foreground font-normal">{seg.label}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[13px] text-muted-foreground font-normal">
+                  {formatTokens(seg.tokens)}
+                </p>
+                <p className="text-[11px] text-muted-foreground/60">
+                  {seg.multiplier}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Dynamic insight box with CheckCircle2 icon */}
+      <div className={`p-3 ${insightStyles.bg} border ${insightStyles.border} rounded-md`}>
+        <div className="flex items-start gap-2">
+          <CheckCircle2 className={`w-4 h-4 ${insightStyles.icon} flex-shrink-0 mt-0.5`} />
+          <div>
+            <h4 className={`text-[13px] font-normal ${insightStyles.heading} mb-1`}>
+              {insight.label}
+            </h4>
+            <p className={`text-[12px] ${insightStyles.body} leading-relaxed`}>
+              {insight.detail}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p className="mt-3 text-[10px] text-muted-foreground/40">
         {formatTokens(data.tokenTotal)} total tokens across active sessions
       </p>
     </div>

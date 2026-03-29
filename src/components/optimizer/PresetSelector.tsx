@@ -14,8 +14,8 @@ export default function PresetSelector({
   onSelect,
 }: PresetSelectorProps) {
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-xs text-muted-foreground">Presets:</span>
+    <div className="flex items-center gap-3">
+      <span className="text-[13px] text-muted-foreground font-normal">Presets:</span>
       {presets.map((preset) => (
         <button
           key={preset.id}
@@ -23,10 +23,10 @@ export default function PresetSelector({
           data-preset={preset.id}
           data-selected={String(activePresetId === preset.id)}
           aria-pressed={activePresetId === preset.id}
-          className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+          className={`rounded-lg px-4 py-2.5 text-[13px] font-normal transition-all ${
             activePresetId === preset.id
-              ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-              : "bg-muted text-muted-foreground hover:bg-surface-hover hover:text-foreground"
+              ? "bg-primary text-primary-foreground"
+              : "bg-surface border border-border hover:bg-surface-hover text-foreground"
           }`}
         >
           {preset.label}

@@ -588,15 +588,22 @@ export default function OptimizerPage() {
   if (!loaded) return null;
 
   return (
-    <div className="p-8" data-page="optimizer">
+    <div className="px-12 py-10 max-w-7xl mx-auto" data-page="optimizer">
       {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
+      <div className="mb-10">
+        <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-lg font-semibold">Token Optimizer</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <div className="flex items-center gap-3 mb-1">
+              <h1 className="text-2xl font-normal tracking-tight">Token Optimizer</h1>
+              {connected && (
+                <span className="px-2.5 py-0.5 bg-success/10 text-success rounded text-xs font-normal">
+                  Live
+                </span>
+              )}
+            </div>
+            <p className="text-[15px] text-muted-foreground">
               {connected
-                ? `Reading live config from ${activeGateway?.name ?? "your gateway"}`
+                ? <>Reading live config from <span className="text-foreground/70">{activeGateway?.name ?? "your gateway"}</span></>
                 : "Using default settings. Connect a gateway for live config."}
             </p>
           </div>
@@ -611,7 +618,7 @@ export default function OptimizerPage() {
               <div className="relative">
                 <button
                   onClick={() => setShowTuneChooser((p) => !p)}
-                  className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
+                  className="rounded-md border border-border px-4 py-2 text-sm font-normal text-muted-foreground transition-colors hover:bg-surface-hover hover:text-foreground"
                 >
                   Help me tune this
                 </button>
@@ -652,9 +659,9 @@ export default function OptimizerPage() {
       </div>
 
       {/* ─── Model Routing ─── */}
-      <div className="space-y-4" data-section="model-routing">
+      <div className="space-y-6" data-section="model-routing">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">Model Routing</h2>
+          <h2 className="text-xl font-normal tracking-tight">Model Routing</h2>
           <span className="font-mono text-xs font-medium text-muted-foreground">
             {(() => {
               const modelKeys = sections.find((s) => s.id === "model-routing")?.leverKeys ?? [];
@@ -684,8 +691,8 @@ export default function OptimizerPage() {
           />
         )}
 
-        {/* Model levers — Agent's Model, Heartbeat Model, Compaction Model */}
-        <div className="grid gap-3">
+        {/* Model levers — 3-column grid: Agent's Model, Heartbeat Model, Compaction Model */}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {(sections.find((s) => s.id === "model-routing")?.leverKeys ?? [])
             .map((key) => levers.find((l) => l.key === key)!)
             .filter(Boolean)
@@ -722,8 +729,8 @@ export default function OptimizerPage() {
 
       {/* ─── Session Insights — Context & Cache analysis ─── */}
       {(contextUtilization?.sessions?.length ?? 0) > 0 || (cacheBreakdown?.tokenTotal ?? 0) > 0 ? (
-        <div className="mt-6 space-y-4" data-section="session-insights">
-          <h2 className="text-base font-semibold">Session Insights</h2>
+        <div className="mt-12 space-y-6" data-section="session-insights">
+          <h2 className="text-xl font-normal tracking-tight">Session Insights</h2>
           <div className="rounded-xl border border-border bg-surface/50 p-5">
             <div className="grid gap-4 sm:grid-cols-2">
               {contextUtilization && contextUtilization.sessions.length > 0 && (
@@ -738,9 +745,9 @@ export default function OptimizerPage() {
       ) : null}
 
       {/* ─── Performance Tuning ─── */}
-      <div className="mt-6 space-y-6">
+      <div className="mt-12 space-y-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">Performance Tuning</h2>
+          <h2 className="text-xl font-normal tracking-tight">Performance Tuning</h2>
           <div className="flex items-center gap-2">
             <PresetSelector
               presets={presets}
@@ -771,7 +778,7 @@ export default function OptimizerPage() {
             return (
               <div key={section.id} data-section={section.id}>
                 <div className="mb-3">
-                  <h3 className="text-sm font-semibold text-muted-foreground">{section.label}</h3>
+                  <h3 className="text-[15px] font-normal text-muted-foreground">{section.label}</h3>
                 </div>
                 <div className="grid gap-3">
                   {visible.map((lever) => (

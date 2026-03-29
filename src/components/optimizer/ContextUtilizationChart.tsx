@@ -1,5 +1,7 @@
 "use client";
 
+import { TrendingUp, CheckCircle2 } from "lucide-react";
+
 interface ContextSession {
   agentId: string;
   model: string;
@@ -126,31 +128,47 @@ export default function ContextUtilizationChart({ data }: Props) {
     (a, b) => b.contextTokens - a.contextTokens
   );
 
-  // Color for the utilization bar
-  const barColor = (pct: number) => {
-    if (pct < 15) return "bg-amber-400/70";
-    if (pct < 75) return "bg-emerald-400/70";
-    if (pct < 90) return "bg-amber-400/70";
-    return "bg-red-400/70";
-  };
+  // Color-coded bars cycling through blue, cyan, teal by index
+  const barColors = ["bg-blue-500", "bg-cyan-500", "bg-teal-500"];
 
   const insightBorder = {
-    success: "border-emerald-500/30",
-    warning: "border-amber-500/30",
-    danger: "border-red-500/30",
+    success: "border-emerald-500/20",
+    warning: "border-blue-500/20",
+    danger: "border-red-500/20",
     muted: "border-border",
   }[insight.color];
 
-  const insightDot = {
-    success: "bg-emerald-400",
-    warning: "bg-amber-400",
-    danger: "bg-red-400",
-    muted: "bg-muted-foreground",
+  const insightBg = {
+    success: "bg-emerald-500/5",
+    warning: "bg-blue-500/5",
+    danger: "bg-red-500/5",
+    muted: "bg-surface/50",
+  }[insight.color];
+
+  const insightIconColor = {
+    success: "text-emerald-400",
+    warning: "text-blue-400",
+    danger: "text-red-400",
+    muted: "text-muted-foreground",
+  }[insight.color];
+
+  const insightLabelColor = {
+    success: "text-emerald-300",
+    warning: "text-blue-300",
+    danger: "text-red-300",
+    muted: "text-muted-foreground",
+  }[insight.color];
+
+  const insightDetailColor = {
+    success: "text-emerald-300/70",
+    warning: "text-blue-300/70",
+    danger: "text-red-300/70",
+    muted: "text-muted-foreground/70",
   }[insight.color];
 
   return (
     <div
-      className="rounded-lg border border-border bg-surface p-4"
+      className="rounded-lg border border-border bg-surface p-6"
       data-section="context-utilization"
       data-avg-percent-used={data.avgPercentUsed.toFixed(1)}
       data-session-count={data.sessions.length}
@@ -160,21 +178,30 @@ export default function ContextUtilizationChart({ data }: Props) {
       data-insight={insight.detail}
       aria-label={`Context utilization: ${data.avgPercentUsed.toFixed(0)}% average across ${data.sessions.length} sessions. ${insight.label}: ${insight.detail}`}
     >
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-muted-foreground">
-          Context Utilization
-        </p>
-        <span className="font-mono text-lg font-semibold text-foreground">
-          {data.avgPercentUsed.toFixed(0)}%
-          <span className="ml-1 text-xs font-normal text-muted-foreground">avg</span>
-        </span>
+      {/* Header with large number display and icon */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h3 className="text-[15px] text-muted-foreground mb-2 font-normal">
+            Context Utilization
+          </h3>
+          <div className="flex items-baseline gap-2">
+            <span className="text-[32px] font-normal text-foreground">
+              {data.avgPercentUsed.toFixed(0)}%
+            </span>
+            <span className="text-[13px] text-muted-foreground/50">avg</span>
+          </div>
+        </div>
+        <div className="w-10 h-10 rounded-md bg-muted/10 flex items-center justify-center border border-border">
+          <TrendingUp className="w-5 h-5 text-muted-foreground" />
+        </div>
       </div>
 
       {/* Per-session bars */}
-      <div className="mt-3 space-y-2" data-list="context-sessions">
-        {sorted.map((session) => (
+      <div className="space-y-4 mb-6" data-list="context-sessions">
+        {sorted.map((session, idx) => (
           <div
             key={session.agentId + session.kind}
+            className="group"
             data-agent={session.agentId}
             data-model={session.model}
             data-kind={session.kind}
@@ -183,24 +210,23 @@ export default function ContextUtilizationChart({ data }: Props) {
             data-percent-used={session.percentUsed}
             aria-label={`${session.agentId} ${session.kind}: ${formatTokens(session.totalTokens)} of ${formatWindow(session.contextTokens)} context (${session.percentUsed}% used)`}
           >
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="capitalize text-foreground/80">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[13px] text-muted-foreground font-normal capitalize">
                 {session.agentId}
                 <span className="ml-1 text-muted-foreground/50">
                   {session.kind === "direct" ? "main" : session.kind}
                 </span>
               </span>
-              <span className="font-mono text-muted-foreground/70">
-                {formatTokens(session.totalTokens)}
+              <span className="text-[13px] text-foreground/70 font-normal">
+                {session.percentUsed}%{" "}
                 <span className="text-muted-foreground/60">
-                  {" / "}
-                  {formatWindow(session.contextTokens)} window
+                  · {formatWindow(session.contextTokens)}
                 </span>
               </span>
             </div>
-            <div className="mt-0.5 h-2 w-full rounded-full bg-muted/20">
+            <div className="h-1.5 bg-muted/10 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${barColor(session.percentUsed)}`}
+                className={`h-full ${barColors[idx % barColors.length]} transition-all duration-500 group-hover:opacity-80`}
                 style={{ width: `${Math.max(1, session.percentUsed)}%` }}
               />
             </div>
@@ -209,19 +235,21 @@ export default function ContextUtilizationChart({ data }: Props) {
       </div>
 
       {/* Dynamic insight */}
-      <div className={`mt-3 rounded-md border ${insightBorder} bg-surface/50 px-3 py-2`}>
-        <div className="flex items-center gap-1.5">
-          <div className={`h-1.5 w-1.5 rounded-full ${insightDot}`} />
-          <span className="text-xs font-medium text-foreground/80">
-            {insight.label}
-          </span>
+      <div className={`p-3 ${insightBg} border ${insightBorder} rounded-md`}>
+        <div className="flex items-start gap-2">
+          <CheckCircle2 className={`w-4 h-4 ${insightIconColor} flex-shrink-0 mt-0.5`} />
+          <div>
+            <h4 className={`text-[13px] font-normal ${insightLabelColor} mb-1`}>
+              {insight.label}
+            </h4>
+            <p className={`text-[12px] ${insightDetailColor} leading-relaxed`}>
+              {insight.detail}
+            </p>
+          </div>
         </div>
-        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground/70">
-          {insight.detail}
-        </p>
       </div>
 
-      <p className="mt-2 text-[10px] text-muted-foreground/40">
+      <p className="mt-3 text-[10px] text-muted-foreground/40">
         Based on {data.sessions.length} active session{data.sessions.length !== 1 ? "s" : ""}
       </p>
     </div>

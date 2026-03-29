@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { TrendingDown, TrendingUp, Minus, ChevronDown, Info } from "lucide-react";
+import { TrendingDown, TrendingUp, Minus, ChevronDown, Info, AlertCircle } from "lucide-react";
 import { lookupRate } from "@/lib/rate-card";
 import { Agent } from "@/types";
 
@@ -24,8 +24,9 @@ interface CostSummaryProps {
   tokensByModel?: ModelTokenUsage[];
 }
 
-function formatRate(input: number, output: number): string {
-  return `$${input}/$${output} per MTok`;
+function formatCostShort(perMillion: number): string {
+  if (perMillion === 0) return "$0";
+  return `$${perMillion}`;
 }
 
 function formatTokens(n: number): string {
@@ -99,84 +100,150 @@ export default function CostSummary({
       return (rateB?.outputPerMillion ?? 0) - (rateA?.outputPerMillion ?? 0);
     });
 
+    // Determine "Recommended" model: cheapest non-free model with the most agents
+    const recommendedModel = (() => {
+      const nonFree = groups.filter((g) => {
+        const rate = lookupRate(g.model);
+        return rate && (rate.inputPerMillion > 0 || rate.outputPerMillion > 0);
+      });
+      if (nonFree.length === 0) return null;
+      // Sort by agent count descending, then by cost ascending
+      const sorted = [...nonFree].sort((a, b) => {
+        const diff = b.agents.length - a.agents.length;
+        if (diff !== 0) return diff;
+        const rateA = lookupRate(a.model);
+        const rateB = lookupRate(b.model);
+        return (rateA?.outputPerMillion ?? 0) - (rateB?.outputPerMillion ?? 0);
+      });
+      return sorted[0]?.model ?? null;
+    })();
+
     return (
       <div className="space-y-3">
-        {/* Model routing overview */}
+        {/* Model routing overview — outer card */}
         <div
-          className="rounded-lg border border-border bg-surface p-4"
+          className="rounded-lg border border-border bg-surface p-5"
           data-section="model-routing"
           data-model-count={groups.length}
           data-agent-count={entries.length}
           aria-label={`Model routing: ${groups.length} models across ${entries.length} agents`}
         >
           {entries.length > 0 ? (
-            <div className="space-y-3">
-              <p className="text-xs font-medium text-muted-foreground">Your Model Routing</p>
-              <div className="space-y-2" data-list="model-routes">
-                {groups.map((group) => {
+            <div>
+              <p className="mb-4 text-sm text-muted-foreground">Your Model Routing</p>
+
+              {/* Inner darker card with model rows */}
+              <div
+                className="rounded-md border border-border/50 bg-background"
+                data-list="model-routes"
+              >
+                {groups.map((group, index) => {
                   const rate = lookupRate(group.model);
                   const agentCount = group.agents.length;
+                  const isRecommended = group.model === recommendedModel;
                   return (
-                    <div
-                      key={group.model}
-                      className="flex items-start gap-3"
-                      data-model={group.model}
-                      data-model-display={rate?.displayName ?? group.model}
-                      data-agents={group.agents.join(",")}
-                      data-agent-count={agentCount}
-                      data-tokens={group.tokens}
-                      data-is-default={group.hasDefault}
-                      data-input-cost-per-mtok={rate?.inputPerMillion ?? "unknown"}
-                      data-output-cost-per-mtok={rate?.outputPerMillion ?? "unknown"}
-                      aria-label={`${rate?.displayName ?? group.model}: ${agentCount} agent${agentCount !== 1 ? "s" : ""}, ${group.tokens > 0 ? formatTokens(group.tokens) + " tokens" : "no token data"}${group.hasDefault ? ", global default" : ""}`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-foreground/90">
-                            {rate?.displayName ?? group.model.split("/").pop() ?? group.model}
-                          </span>
-                          {rate && (
-                            <span className="shrink-0 font-mono text-[10px] text-muted-foreground/50">
-                              {formatRate(rate.inputPerMillion, rate.outputPerMillion)}
+                    <div key={group.model}>
+                      <div
+                        className="flex items-center justify-between p-4 transition-colors hover:bg-surface-hover"
+                        data-model={group.model}
+                        data-model-display={rate?.displayName ?? group.model}
+                        data-agents={group.agents.join(",")}
+                        data-agent-count={agentCount}
+                        data-tokens={group.tokens}
+                        data-is-default={group.hasDefault}
+                        data-input-cost-per-mtok={rate?.inputPerMillion ?? "unknown"}
+                        data-output-cost-per-mtok={rate?.outputPerMillion ?? "unknown"}
+                        aria-label={`${rate?.displayName ?? group.model}: ${agentCount} agent${agentCount !== 1 ? "s" : ""}, ${group.tokens > 0 ? formatTokens(group.tokens) + " tokens" : "no token data"}${group.hasDefault ? ", global default" : ""}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-foreground">
+                              {rate?.displayName ?? group.model.split("/").pop() ?? group.model}
+                            </span>
+                            {rate && (
+                              <span className="text-xs text-muted-foreground/50">
+                                {formatCostShort(rate.inputPerMillion)} / {formatCostShort(rate.outputPerMillion)}
+                              </span>
+                            )}
+                            {isRecommended && (
+                              <span className="rounded px-2 py-0.5 bg-success/10 text-success text-[11px]">
+                                Recommended
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-[13px] text-muted-foreground/60">
+                            {agentCount === 1 ? (
+                              <span className="capitalize">{group.agents[0]}</span>
+                            ) : agentCount <= 3 ? (
+                              group.agents.map((name, i) => (
+                                <span key={name}>
+                                  {i > 0 && ", "}
+                                  <span className="capitalize">{name}</span>
+                                </span>
+                              ))
+                            ) : (
+                              <span>{agentCount} agents</span>
+                            )}
+                            {group.hasDefault && agentCount > 0 && (
+                              <span className="text-muted-foreground/40"> · global default</span>
+                            )}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          {group.tokens > 0 ? (
+                            <div>
+                              <div className="text-xl text-foreground">
+                                {group.tokens.toLocaleString()}
+                              </div>
+                              <div className="text-[11px] text-muted-foreground/50">tokens</div>
+                            </div>
+                          ) : (
+                            <span className="rounded-full bg-muted/30 px-2 py-0.5 font-mono text-[11px] font-medium text-muted-foreground">
+                              {agentCount}
                             </span>
                           )}
                         </div>
-                        <p className="mt-0.5 text-xs text-muted-foreground/70">
-                          {agentCount === 1 ? (
-                            <span className="capitalize">{group.agents[0]}</span>
-                          ) : agentCount <= 3 ? (
-                            group.agents.map((name, i) => (
-                              <span key={name}>
-                                {i > 0 && ", "}
-                                <span className="capitalize">{name}</span>
-                              </span>
-                            ))
-                          ) : (
-                            <span>{agentCount} agents</span>
-                          )}
-                          {group.hasDefault && agentCount > 0 && (
-                            <span className="text-muted-foreground/40"> · global default</span>
-                          )}
-                        </p>
                       </div>
-                      <div className="shrink-0 text-right">
-                        {group.tokens > 0 ? (
-                          <span className="font-mono text-xs font-medium text-foreground/70">
-                            {formatTokens(group.tokens)}
-                          </span>
-                        ) : (
-                          <span className="rounded-full bg-muted/30 px-2 py-0.5 font-mono text-[11px] font-medium text-muted-foreground">
-                            {agentCount}
-                          </span>
-                        )}
-                      </div>
+                      {index < groups.length - 1 && (
+                        <div className="border-b border-border/50" />
+                      )}
                     </div>
                   );
                 })}
               </div>
-              <p className="text-[10px] text-muted-foreground/50">
-                Adjust model routing below to see estimated cost impact
-              </p>
+
+              {/* "Why no dollar figures?" collapsible button */}
+              <button
+                onClick={() => setShowWhyNoDollars((p) => !p)}
+                className="mt-4 flex w-full items-center gap-2 rounded-md border border-border/50 bg-surface px-3 py-2 text-left transition-colors hover:bg-surface-hover"
+              >
+                <ChevronDown
+                  size={16}
+                  className={`shrink-0 text-muted-foreground/50 transition-transform ${showWhyNoDollars ? "rotate-180" : ""}`}
+                />
+                <span className="flex-1 text-[13px] text-muted-foreground">
+                  Why don&apos;t we show dollar figures?
+                </span>
+              </button>
+
+              {showWhyNoDollars && (
+                <div className="mt-3 rounded-lg border border-warning/20 bg-background p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle size={16} className="shrink-0 mt-0.5 text-warning" />
+                    <div>
+                      <h4 className="text-sm text-warning mb-2">Cost Estimation Complexity</h4>
+                      <p className="text-[13px] leading-relaxed text-muted-foreground">
+                        Provider bills include costs that aren&apos;t reflected in token counts — web
+                        search tool calls, code execution, cache write premiums, retry overhead, and
+                        other per-request charges. Token-based estimates systematically undercount. In
+                        testing, a $170 Anthropic bill corresponded to just $15 in token-calculated
+                        costs — an 11x gap. We show percentage impact instead, since the rate-card
+                        ratios between models are exact even when absolute dollar amounts aren&apos;t.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
@@ -185,46 +252,13 @@ export default function CostSummary({
           )}
         </div>
 
-        {/* "Why no dollar figures?" collapsible */}
-        <button
-          onClick={() => setShowWhyNoDollars((p) => !p)}
-          className="flex w-full items-center gap-1.5 rounded-lg border border-border/50 bg-surface/50 px-3 py-2 text-left text-xs text-muted-foreground/70 transition-colors hover:bg-surface hover:text-muted-foreground"
-        >
-          <Info size={13} className="shrink-0" />
-          <span className="flex-1">Why don&apos;t we show dollar figures?</span>
-          <ChevronDown
-            size={13}
-            className={`shrink-0 transition-transform ${showWhyNoDollars ? "rotate-180" : ""}`}
-          />
-        </button>
-        {showWhyNoDollars && (
-          <div className="rounded-lg border border-border/50 bg-surface/30 px-4 py-3 text-xs leading-relaxed text-muted-foreground/80">
-            <p className="mb-2">
-              <span className="font-medium text-foreground/70">There is no reliable way to deliver an accurate dollar figure for a single gateway.</span>
-            </p>
-            <ul className="list-disc space-y-1.5 pl-4">
-              <li>
-                Provider bills include costs that aren&apos;t reflected in token counts — web search
-                tool calls, code execution, cache write premiums, retry overhead, and other
-                per-request charges.
-              </li>
-              <li>
-                If you run multiple gateways (or other projects) on the same API key, the
-                provider&apos;s billing total covers everything — there&apos;s no way to isolate
-                what one gateway actually cost.
-              </li>
-              <li>
-                Token-based estimates systematically undercount. In testing, a $170 Anthropic bill
-                corresponded to just $15 in token-calculated costs — an 11× gap.
-              </li>
-            </ul>
-            <p className="mt-2">
-              Instead, we show <span className="font-medium text-foreground/70">percentage impact</span> when
-              you change model routing. This tells you the relative savings or increase accurately,
-              since the rate-card ratios between models are exact — even when absolute dollar amounts aren&apos;t.
-            </p>
-          </div>
-        )}
+        {/* Subtle blue info box */}
+        <div className="flex items-start gap-3 rounded-md border border-blue-500/20 bg-blue-500/5 p-3">
+          <Info size={16} className="shrink-0 mt-0.5 text-blue-400" />
+          <p className="text-[13px] text-blue-300/80">
+            Adjust model routing below to see estimated cost impact
+          </p>
+        </div>
       </div>
     );
   }

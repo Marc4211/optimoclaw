@@ -2,6 +2,29 @@
 
 import { LeverDefinition, LeverValue } from "@/types/optimizer";
 import { GatewayModel } from "@/types";
+import { Brain, Heart, Archive } from "lucide-react";
+
+const MODEL_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  defaultModel: Brain,
+  heartbeatModel: Heart,
+  compactionModel: Archive,
+};
+
+/** Cost/Performance badge values keyed by lever key then option value */
+const BADGE_MAP: Record<string, Record<string, { cost: string; perf: string }>> = {
+  heartbeatFrequency: {
+    off:   { cost: "Minimal",  perf: "None" },
+    "60m": { cost: "Low",      perf: "Standard" },
+    "30m": { cost: "Moderate", perf: "Good" },
+    "15m": { cost: "High",     perf: "Excellent" },
+  },
+  sessionContextLoading: {
+    lean:     { cost: "Minimal",  perf: "Basic" },
+    standard: { cost: "Moderate", perf: "Good" },
+    full:     { cost: "High",     perf: "Excellent" },
+  },
+};
+
 interface LeverCardProps {
   lever: LeverDefinition;
   /** Override the lever label (e.g. "[Agent]'s Model" instead of "Default Model") */
@@ -46,6 +69,12 @@ export default function LeverCard({
   // For model levers with gateway models: use a dropdown
   const useModelDropdown = !disabled && isModelLever && modelOptions && modelOptions.length > 0;
 
+  // Model lever icon
+  const Icon = isModelLever ? MODEL_ICONS[lever.key] : undefined;
+
+  // Badge data for select-type performance levers
+  const badges = BADGE_MAP[lever.key]?.[String(value)] ?? null;
+
   return (
     <div
       className={`rounded-lg border border-border bg-surface p-5 ${disabled ? "opacity-50" : ""}`}
@@ -55,12 +84,27 @@ export default function LeverCard({
     >
       <div className="mb-3 flex items-start justify-between">
         <div className="flex-1">
-          <h3 className="text-sm font-medium">
-            {labelOverride ?? lever.label}
-            {(inherited || tagOverride) && (
-              <span className="ml-2 text-xs font-normal text-muted-foreground/60">({tagOverride ?? "using global default"})</span>
-            )}
-          </h3>
+          {/* Model lever: icon + title row inspired by ModelCard design */}
+          {Icon ? (
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-8 h-8 rounded bg-muted/30 flex items-center justify-center border border-border/50">
+                <Icon className="w-4 h-4 text-muted-foreground" />
+              </div>
+              <h3 className="text-sm font-medium">
+                {labelOverride ?? lever.label}
+                {(inherited || tagOverride) && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground/60">({tagOverride ?? "using global default"})</span>
+                )}
+              </h3>
+            </div>
+          ) : (
+            <h3 className="text-sm font-medium">
+              {labelOverride ?? lever.label}
+              {(inherited || tagOverride) && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground/60">({tagOverride ?? "using global default"})</span>
+              )}
+            </h3>
+          )}
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
             {lever.description}
           </p>
@@ -122,22 +166,42 @@ export default function LeverCard({
 
       {/* Non-model select lever: button group (frequency, context loading, etc.) */}
       {lever.type === "select" && !useModelDropdown && options && (
-        <div className="flex flex-wrap gap-2">
-          {options.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => onChange(lever.key, option.value)}
-              data-selected={String(String(value) === option.value)}
-              aria-pressed={String(value) === option.value}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                String(value) === option.value
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-surface-hover hover:text-foreground"
-              }`}
-            >
-              {option.label}
-            </button>
-          ))}
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2">
+            {options.map((option) => (
+              <button
+                key={option.value}
+                onClick={() => onChange(lever.key, option.value)}
+                data-selected={String(String(value) === option.value)}
+                aria-pressed={String(value) === option.value}
+                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+                  String(value) === option.value
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-surface-hover hover:text-foreground"
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Cost / Performance badges for performance tuning levers */}
+          {badges && (
+            <div className="flex items-center gap-4 text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Cost Impact:</span>
+                <span className="rounded px-2 py-0.5 bg-amber-500/10 text-amber-500 font-medium">
+                  {badges.cost}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-muted-foreground">Performance:</span>
+                <span className="rounded px-2 py-0.5 bg-primary/10 text-primary font-medium">
+                  {badges.perf}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -149,7 +213,7 @@ export default function LeverCard({
                 ? lever.formatValue(lever.min ?? 0)
                 : lever.min}
             </span>
-            <span className="font-mono text-sm font-medium text-primary">
+            <span className="font-mono text-base font-medium text-primary">
               {lever.formatValue
                 ? lever.formatValue(value as number)
                 : value}
