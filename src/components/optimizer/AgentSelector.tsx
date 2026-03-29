@@ -7,12 +7,14 @@ import { useState, useRef, useEffect } from "react";
 interface AgentSelectorProps {
   agents: Agent[];
   selectedAgentId: string | null;
+  defaultAgentId?: string | null;
   onSelect: (agentId: string | null) => void;
 }
 
 export default function AgentSelector({
   agents,
   selectedAgentId,
+  defaultAgentId,
   onSelect,
 }: AgentSelectorProps) {
   const [open, setOpen] = useState(false);
@@ -33,7 +35,10 @@ export default function AgentSelector({
   const selected = selectedAgentId
     ? agents.find((a) => a.id === selectedAgentId)
     : null;
-  const label = selected ? selected.name : "Global defaults";
+  const isDefault = selected?.id === defaultAgentId;
+  const label = selected
+    ? `${selected.name}${isDefault ? " (default)" : ""}`
+    : "Global defaults";
 
   return (
     <div className="relative" ref={ref} data-agent-scope={selectedAgentId ?? "defaults"}>
@@ -67,7 +72,12 @@ export default function AgentSelector({
                     : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"
                 }`}
               >
-                <span className="flex-1">{agent.name}</span>
+                <span className="flex-1">
+                  {agent.name}
+                  {agent.id === defaultAgentId && (
+                    <span className="ml-1.5 text-[11px] text-muted-foreground/50">(default)</span>
+                  )}
+                </span>
                 <span className="text-xs text-muted-foreground/60">{agent.model.split("/").pop()}</span>
               </button>
             ))}

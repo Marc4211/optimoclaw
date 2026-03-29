@@ -687,6 +687,7 @@ export default function OptimizerPage() {
           <AgentSelector
             agents={agents}
             selectedAgentId={selectedAgentId}
+            defaultAgentId={defaultAgentId}
             onSelect={handleAgentSelect}
           />
         )}
