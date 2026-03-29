@@ -6,13 +6,11 @@ import { usePathname } from "next/navigation";
 import {
   Gauge,
   Activity,
-  Wrench,
   Plug,
   Bot,
   ChevronDown,
   Plus,
   Trash2,
-  Settings,
 } from "lucide-react";
 import { useGateway } from "@/contexts/GatewayContext";
 
@@ -20,7 +18,6 @@ const navItems = [
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/optimizer", label: "Token Optimizer", icon: Gauge },
   { href: "/graph", label: "Performance Graph", icon: Activity },
-  { href: "/skills", label: "Skill Studio", icon: Wrench },
 ];
 
 export default function Sidebar() {
@@ -85,21 +82,6 @@ export default function Sidebar() {
           );
         })}
 
-        {/* Spacer */}
-        <div className="flex-1" />
-
-        {/* Settings at bottom of nav */}
-        <Link
-          href="/settings"
-          className={`flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors ${
-            pathname === "/settings"
-              ? "bg-muted text-foreground"
-              : "text-muted-foreground hover:bg-surface-hover hover:text-foreground"
-          }`}
-        >
-          <Settings size={16} />
-          Settings
-        </Link>
       </nav>
 
       {/* Gateway switcher */}
