@@ -64,15 +64,16 @@ function getInsight(data: ContextUtilizationData): {
 
   // --- Specific: big windows barely used ---
   if (oversized.length > 0 && avg < 10) {
+    const largeWindow = formatWindow(oversized[0].contextTokens);
     return {
-      label: hasMixedWindows ? "Mixed window sizes" : "Over-provisioned",
-      status: "No BroadClaw lever for this",
+      label: hasMixedWindows ? "Mixed window sizes" : "Over-provisioned windows",
+      status: "BroadClaw lever available",
       meaning: hasMixedWindows
-        ? `${oversized.length} session${oversized.length !== 1 ? "s have" : " has"} a ${formatWindow(oversized[0].contextTokens)} context window but ${oversized.length === 1 ? "is" : "are"} using less than 15% of it. Other sessions use smaller ${formatWindow(Math.min(...windowSizes))} windows.`
-        : `All sessions have ${formatWindow(oversized[0].contextTokens)} context windows but are only using ${avg.toFixed(0)}% on average.`,
-      action: "Context window size is set by the model and gateway, not by BroadClaw. The larger windows may have been auto-assigned. This is informational — there's no config lever to change here.",
-      lever: null,
-      color: "muted",
+        ? `${oversized.length} session${oversized.length !== 1 ? "s are" : " is"} using a ${largeWindow} context window at under 15% utilization. Larger windows cost more on every cache write — you pay for the headroom even if you don't use it.`
+        : `All sessions have ${largeWindow} context windows but are only using ${avg.toFixed(0)}% on average. Larger windows cost more on every cache write — you pay for the headroom even if you don't use it.`,
+      action: "The model you assign determines the maximum window size. If these sessions don't need extended context, switching to Haiku caps the window at 200K and reduces per-write cost.",
+      lever: "defaultModel",
+      color: "warning",
     };
   }
 
