@@ -56,11 +56,17 @@ Click any agent to see their live detail view: which model they're actually runn
 git clone https://github.com/Marc4211/optimoclaw.git
 cd optimoclaw
 npm install
-npm run build
-npx next start -p 3070
+npx next dev -p 3070
 ```
 
 Open [http://localhost:3070](http://localhost:3070) in your browser.
+
+For a production build (faster page loads, no hot reload):
+
+```bash
+npm run build
+npm start
+```
 
 ## Connect to your gateway
 
@@ -85,12 +91,6 @@ When you adjust levers in the Token Optimizer and click **Apply Changes**, Optim
 3. Updates any agent workspace `.md` files that reference changed values (heartbeat frequency, model names) so agent self-documentation stays in sync
 
 All config changes go through the OpenClaw CLI. OptimoClaw never modifies config files directly.
-
-## Development
-
-```bash
-npx next dev -p 3070
-```
 
 ## Project structure
 
