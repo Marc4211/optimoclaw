@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next build && next start -p 3070",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p 3070",
     "lint": "eslint"
   },
   "dependencies": {
