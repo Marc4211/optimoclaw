@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Plug } from "lucide-react";
 import { useGateway } from "@/contexts/GatewayContext";
@@ -28,10 +28,12 @@ export default function ConnectPage() {
   }
 
   // Redirect only after THIS form's connection succeeds
-  if (connected && justConnected.current) {
-    justConnected.current = false;
-    router.push("/agents");
-  }
+  useEffect(() => {
+    if (connected && justConnected.current) {
+      justConnected.current = false;
+      router.push("/agents");
+    }
+  }, [connected, router]);
 
   return (
     <div className="flex h-full items-center justify-center p-8" data-page="connect" data-connect-status={connected ? "connected" : error ? "error" : "disconnected"}>
