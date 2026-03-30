@@ -92,6 +92,16 @@ When you adjust levers in the Token Optimizer and click **Apply Changes**, Optim
 
 All config changes go through the OpenClaw CLI. OptimoClaw never modifies config files directly.
 
+### Why no dollar figures?
+
+OptimoClaw shows token counts and model rates instead of pulling actual spend from billing APIs. This is intentional:
+
+- **No API keys required** — you don't need to hand over Anthropic or OpenAI admin credentials to a local tool
+- **Works immediately** — no billing setup, no waiting for usage data to populate
+- **Rates are transparent** — published per-model pricing is baked in from provider pricing pages, so you can see exactly what each model costs per million tokens
+
+The trade-off is that you see _what things should cost_ based on the rate card, not _what you were actually charged_. For most users optimizing config, relative cost comparison between models is what matters — and that's what OptimoClaw gives you.
+
 ## Project structure
 
 ```
