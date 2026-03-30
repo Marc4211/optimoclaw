@@ -2,6 +2,8 @@
 
 import { Suspense, useState, useMemo, useCallback, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { SlidersHorizontal, Plug } from "lucide-react";
 import { LeverValue, ContextLoadOption } from "@/types/optimizer";
 import { OpenClawConfig } from "@/types";
 import {
@@ -578,6 +580,30 @@ function OptimizerPageInner() {
   }
 
   if (!loaded) return null;
+
+  if (!connected) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
+          <SlidersHorizontal size={28} className="text-primary" />
+        </div>
+        <h1 className="text-lg font-semibold">Token Optimizer</h1>
+        <p className="mt-3 max-w-lg text-sm leading-relaxed text-muted-foreground">
+          The Token Optimizer reads your live OpenClaw config and session data to show exactly which models your agents are using, how much context they&apos;re consuming, and where you can reduce cost or improve performance.
+        </p>
+        <p className="mt-2 max-w-lg text-sm text-muted-foreground/70">
+          Connect a gateway to unlock model routing insights, cache efficiency analysis, and one-click config tuning across all your agents.
+        </p>
+        <Link
+          href="/connect"
+          className="mt-5 inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          <Plug size={16} />
+          Connect Gateway
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="px-12 py-10 max-w-7xl mx-auto" data-page="optimizer">
