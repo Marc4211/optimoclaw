@@ -106,7 +106,7 @@ The trade-off is that you see _what things should cost_ based on the rate card, 
 
 ### LosslessClaw integration
 
-If you use [LosslessClaw](https://github.com/openclaw/openclaw) for context compaction, OptimoClaw's **Compaction Threshold** and **Compaction Model** levers write directly to its config (`plugins.entries.lossless-claw`). You can control when compaction kicks in and which model handles summarization — lower the threshold to compact earlier and reduce context costs, or raise it to preserve more conversation history. Session Insights will flag when your agents are running warm and point you to these levers.
+If you use [LosslessClaw](https://github.com/Martian-Engineering/lossless-claw) for context compaction, OptimoClaw's **Compaction Threshold** and **Compaction Model** levers write directly to its config (`plugins.entries.lossless-claw`). You can control when compaction kicks in and which model handles summarization — lower the threshold to compact earlier and reduce context costs, or raise it to preserve more conversation history. Session Insights will flag when your agents are running warm and point you to these levers.
 
 ## Project structure
 
