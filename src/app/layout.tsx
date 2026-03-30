@@ -4,7 +4,6 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import AppStateProvider from "@/components/AppStateProvider";
 import { GatewayProvider } from "@/contexts/GatewayContext";
-import { RatesProvider } from "@/contexts/RatesContext";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -33,11 +32,9 @@ export default function RootLayout({
     >
       <body suppressHydrationWarning className="flex h-full bg-background text-foreground">
         <GatewayProvider>
-          <RatesProvider>
             <AppStateProvider />
             <Sidebar />
             <main className="flex-1 overflow-y-auto">{children}</main>
-          </RatesProvider>
         </GatewayProvider>
       </body>
     </html>

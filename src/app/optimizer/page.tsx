@@ -377,8 +377,8 @@ function OptimizerPageInner() {
 
   // Overall percentage change from base config
   const overallPercentChange = useMemo(() => {
-    const baseCost = calculateCost(baseConfig, undefined, costOptions).total;
-    const currentCost = calculateCost(values, undefined, costOptions).total;
+    const baseCost = calculateCost(baseConfig, costOptions).total;
+    const currentCost = calculateCost(values, costOptions).total;
     if (baseCost === 0) return 0;
     return ((currentCost - baseCost) / baseCost) * 100;
   }, [values, baseConfig, costOptions]);
@@ -456,7 +456,7 @@ function OptimizerPageInner() {
   // Shows relative impact: "switching from Sonnet to Haiku = -80%"
   const leverCostDeltaPercents = useMemo(() => {
     const deltas: Record<string, number> = {};
-    const baseCost = calculateCost(baseConfig, undefined, costOptions).total;
+    const baseCost = calculateCost(baseConfig, costOptions).total;
     for (const lever of levers) {
       if (!MODEL_LEVER_KEYS.has(lever.key)) {
         deltas[lever.key] = 0;
@@ -464,7 +464,7 @@ function OptimizerPageInner() {
       }
       if (String(values[lever.key]) !== String(baseConfig[lever.key])) {
         const withChanged = { ...baseConfig, [lever.key]: values[lever.key] };
-        const changedCost = calculateCost(withChanged, undefined, costOptions).total;
+        const changedCost = calculateCost(withChanged, costOptions).total;
         deltas[lever.key] = baseCost > 0 ? ((changedCost - baseCost) / baseCost) * 100 : 0;
       } else {
         deltas[lever.key] = 0;

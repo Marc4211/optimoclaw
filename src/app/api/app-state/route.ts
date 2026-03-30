@@ -26,7 +26,6 @@ export async function GET() {
         agents: "/agents — data-page='agents', agent cards have data-agent-* attributes",
         optimizer: "/optimizer — data-page='optimizer', levers have data-lever/data-value/data-cost-delta, cost bar has data-actual/data-projected/data-delta",
         connect: "/connect — data-page='connect', data-connect-status='connected|disconnected|error'",
-        skills: "/skills — data-page='skills' (placeholder)",
       },
     },
   });

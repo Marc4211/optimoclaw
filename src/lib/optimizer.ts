@@ -7,8 +7,6 @@ import {
   FrequencyOption,
   ContextLoadOption,
 } from "@/types/optimizer";
-import { ModelRate } from "@/types/rates";
-import { getRateForModel } from "@/lib/rates";
 import { getModelRate as getRateFromCard } from "@/lib/rate-card";
 
 // --- Lever definitions ---
@@ -421,7 +419,6 @@ const MEMORY_TOKENS_PER_DAY = 3000; // ~3k tokens per day of memory files
  */
 function getModelCost(
   modelString: string,
-  customRates?: ModelRate[]
 ): { input: number; output: number } {
   const lower = modelString.toLowerCase();
 
@@ -434,18 +431,7 @@ function getModelCost(
     return rateCardResult;
   }
 
-  // 2. Custom rates from Admin API (optional, user-provided)
-  if (customRates) {
-    const rate = getRateForModel(customRates, modelString);
-    if (rate) return { input: rate.inputPerMillion, output: rate.outputPerMillion };
-    for (const r of customRates) {
-      if (lower.includes(r.model.toLowerCase().replace("claude-", ""))) {
-        return { input: r.inputPerMillion, output: r.outputPerMillion };
-      }
-    }
-  }
-
-  // 3. Legacy pattern matching (last resort)
+  // 2. Legacy pattern matching (fallback)
   for (const pattern of MODEL_COST_PATTERNS) {
     if (lower.includes(pattern.match)) {
       return { input: pattern.input, output: pattern.output };
@@ -465,7 +451,6 @@ function getModelCost(
  */
 export function calculateCost(
   values: LeverValue,
-  customRates?: ModelRate[],
   options?: {
     agentCount?: number;
     realBaselineMonthly?: number;
@@ -474,11 +459,11 @@ export function calculateCost(
   }
 ): CostEstimate {
   const agentCount = options?.agentCount ?? 5;
-  const rawCost = calculateRawCost(values, customRates, agentCount);
+  const rawCost = calculateRawCost(values, agentCount);
 
   // If we have real baseline spend, anchor to it
   if (options?.realBaselineMonthly && options?.baseValues) {
-    const baseCost = calculateRawCost(options.baseValues, customRates, agentCount);
+    const baseCost = calculateRawCost(options.baseValues, agentCount);
     if (baseCost.total > 0) {
       const scaleFactor = options.realBaselineMonthly / baseCost.total;
       return {
@@ -502,7 +487,6 @@ export function calculateCost(
 
 function calculateRawCost(
   values: LeverValue,
-  customRates: ModelRate[] | undefined,
   agentCount: number
 ): CostEstimate {
   let dailyInput = 0;
@@ -510,12 +494,12 @@ function calculateRawCost(
 
   // Heartbeat cost: frequency × agents × tokens per beat
   const beatsPerDay = FREQUENCY_MULTIPLIER[values.heartbeatFrequency];
-  const hbModel = getModelCost(values.heartbeatModel, customRates);
+  const hbModel = getModelCost(values.heartbeatModel);
   dailyInput += beatsPerDay * agentCount * HEARTBEAT_TOKENS * hbModel.input / 1_000_000;
   dailyOutput += beatsPerDay * agentCount * (HEARTBEAT_TOKENS * 0.3) * hbModel.output / 1_000_000;
 
   // Session cost: concurrency × daily tokens × context load multiplier
-  const sessionModel = getModelCost(values.defaultModel, customRates);
+  const sessionModel = getModelCost(values.defaultModel);
   const contextMultiplier = CONTEXT_LOAD_MULTIPLIER[values.sessionContextLoading];
   const dailySessionTokens = SESSION_TOKENS_PER_DAY * values.subagentConcurrency * contextMultiplier;
   dailyInput += dailySessionTokens * sessionModel.input / 1_000_000;
@@ -523,7 +507,7 @@ function calculateRawCost(
 
   // Compaction cost: more compaction at lower thresholds
   const compactionsPerDay = Math.max(1, Math.round(200000 / values.compactionThreshold));
-  const compModel = getModelCost(values.compactionModel, customRates);
+  const compModel = getModelCost(values.compactionModel);
   dailyInput += compactionsPerDay * agentCount * COMPACTION_TOKENS * compModel.input / 1_000_000;
   dailyOutput += compactionsPerDay * agentCount * (COMPACTION_TOKENS * 0.5) * compModel.output / 1_000_000;
 
@@ -552,7 +536,6 @@ function calculateRawCost(
 export function calculateLeverCost(
   leverKey: string,
   values: LeverValue,
-  customRates?: ModelRate[],
   options?: {
     agentCount?: number;
     realBaselineMonthly?: number;
@@ -577,8 +560,8 @@ export function calculateLeverCost(
   const withLever = { ...values };
   const withoutLever = { ...values, [leverKey]: zeroValues[leverKey as keyof LeverValue] ?? values[leverKey as keyof LeverValue] };
 
-  const costWith = calculateCost(withLever, customRates, options).total;
-  const costWithout = calculateCost(withoutLever, customRates, options).total;
+  const costWith = calculateCost(withLever, options).total;
+  const costWithout = calculateCost(withoutLever, options).total;
 
   return costWith - costWithout;
 }

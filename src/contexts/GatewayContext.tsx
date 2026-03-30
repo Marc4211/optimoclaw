@@ -84,10 +84,9 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
     setMounted(true);
   }, []);
 
-  // Gateway usage data comes from the Anthropic Admin API (via the rates
-  // setup flow), not from gateway methods — the `cli` client ID doesn't
-  // get operator.read scope, so usage.status and usage.cost are inaccessible.
-  // Mark as loaded immediately; actual cost data lives in RatesContext.
+  // Cost estimates come from the published rate card (rate-card.ts), not
+  // from gateway methods — the `cli` client ID doesn't get operator.read
+  // scope, so usage.status and usage.cost are inaccessible.
 
   const refreshAgents = useCallback(async () => {
     // Agents come from the connect snapshot, not a separate API call.
@@ -155,8 +154,6 @@ export function GatewayProvider({ children }: { children: ReactNode }) {
           connecting: false,
           error: null,
         });
-
-        // Cost data comes from Anthropic Admin API (RatesContext), not gateway
 
         // Fetch available models via CLI route (WebSocket models.list needs operator.read)
         const configPath = (client.snapshot?.configPath as string) ?? "";

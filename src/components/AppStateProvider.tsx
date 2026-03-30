@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useGateway } from "@/contexts/GatewayContext";
-import { useRates } from "@/contexts/RatesContext";
 
 /**
  * Injects full app state onto window.__OPTIMOCLAW_STATE__ for agent consumption.
@@ -17,7 +16,6 @@ export default function AppStateProvider() {
     agents,
     gateways,
   } = useGateway();
-  const { config: ratesConfig, hasRates } = useRates();
 
   useEffect(() => {
     const state = {
@@ -37,13 +35,6 @@ export default function AppStateProvider() {
         status: a.status,
         sessionCount: a.sessionCount,
       })),
-      rates: {
-        configured: hasRates,
-        source: ratesConfig?.source ?? null,
-        provider: ratesConfig?.provider ?? null,
-        actualMonthly: ratesConfig?.realSpend?.monthlyEstimate ?? null,
-        periodDays: ratesConfig?.realSpend?.periodDays ?? null,
-      },
       timestamp: new Date().toISOString(),
     };
 
