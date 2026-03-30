@@ -1,6 +1,12 @@
-# OptimoClaw
+<p align="center">
+  <img src="public/optimoclaw_lockup.svg" alt="OptimoClaw" width="320" />
+</p>
 
-Token optimizer dashboard for [OpenClaw](https://github.com/openclaw/openclaw) AI agent orchestration.
+<p align="center">
+  Token optimizer dashboard for <a href="https://github.com/openclaw/openclaw">OpenClaw</a> AI agent orchestration.
+</p>
+
+---
 
 OptimoClaw connects to your local OpenClaw gateway and gives you a visual interface to understand what your agents are doing, how much they cost, and what you can tune — without editing config files by hand.
 
