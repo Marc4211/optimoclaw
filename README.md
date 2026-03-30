@@ -104,6 +104,10 @@ OptimoClaw shows token counts and model rates instead of pulling actual spend fr
 
 The trade-off is that you see _what things should cost_ based on the rate card, not _what you were actually charged_. For most users optimizing config, relative cost comparison between models is what matters — and that's what OptimoClaw gives you.
 
+### LosslessClaw integration
+
+If you use [LosslessClaw](https://github.com/openclaw/openclaw) for context compaction, OptimoClaw's **Compaction Threshold** and **Compaction Model** levers write directly to its config (`plugins.entries.lossless-claw`). You can control when compaction kicks in and which model handles summarization — lower the threshold to compact earlier and reduce context costs, or raise it to preserve more conversation history. Session Insights will flag when your agents are running warm and point you to these levers.
+
 ## Project structure
 
 ```
