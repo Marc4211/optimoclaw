@@ -75,7 +75,9 @@ npm start
 3. Enter a name (e.g. "Local", "Production"), your gateway URL, and gateway token
 4. Click Connect
 
-You can save multiple gateway connections and switch between them using the switcher at the bottom of the sidebar.
+### Multiple gateways
+
+OptimoClaw supports multiple gateway connections. If you run separate OpenClaw instances (e.g. one for personal agents, one for a team), save each as a gateway and switch between them from the sidebar. All connection data is stored in your browser's localStorage — nothing is sent to any external server.
 
 ## How it works
 
