@@ -16,7 +16,7 @@ OptimoClaw connects to your local OpenClaw gateway and gives you a visual interf
 
 - [Node.js](https://nodejs.org/) 18.17 or later
 - A running [OpenClaw](https://github.com/openclaw/openclaw) instance **on the same machine**
-- OpenClaw gateway accessible (default: `http://localhost:3069`)
+- OpenClaw gateway accessible (e.g. `http://localhost:19009` — your port may differ)
 
 ## Quick start
 
