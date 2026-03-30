@@ -1,3 +1,7 @@
+// Copyright 2026 Cisco Systems, Inc. and its affiliates
+//
+// SPDX-License-Identifier: MIT
+
 export type FrequencyOption = "off" | "60m" | "30m" | "15m";
 export type ContextLoadOption = "lean" | "standard" | "full";
 
