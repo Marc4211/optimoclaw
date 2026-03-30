@@ -12,11 +12,37 @@ OptimoClaw connects to your local OpenClaw gateway and gives you a visual interf
 
 ## What it does
 
-**Agents** — See every agent at a glance: which model they're actually running (not what they claim), heartbeat frequency, session count, and whether anything needs attention. Click an agent to see their sessions, context utilization, and cache efficiency.
+### Token Optimizer
 
-**Token Optimizer** — Change agent config through visual levers: default model, heartbeat frequency and model, compaction threshold, session context loading, memory file scope, subagent concurrency, and more. See the impact before you apply. Use "Help me tune this" for guided suggestions (reduce cost, improve quality, faster responses).
+See your model routing at a glance — which models are assigned across agents, token usage, and rate card pricing. Change config through visual levers: default model, heartbeat frequency and model, compaction threshold, session context loading, memory file scope, subagent concurrency, and more. Use "Help me tune this" for guided suggestions (reduce cost, improve quality, faster responses).
 
-**Session Insights** — Context utilization and cache efficiency charts with actionable analysis. Each insight either points you to a specific lever, tells you honestly there's no lever for it, or confirms things are already optimal.
+<p align="center">
+  <img src="public/screenshots/optimoclaw_token_optimizer_1.png" alt="Token Optimizer — Model routing and config levers" width="720" />
+</p>
+
+### Performance Tuning
+
+Fine-tune heartbeat frequency, subagent concurrency, and search batch limits with visual controls. See cost and performance trade-offs for each setting before you apply.
+
+<p align="center">
+  <img src="public/screenshots/optimoclaw_token_optimizer_2.png" alt="Performance Tuning — Heartbeat, concurrency, and batch controls" width="720" />
+</p>
+
+### Session Insights
+
+Context utilization and cache efficiency charts with actionable analysis. Each insight either points you to a specific lever, tells you honestly there's no lever for it, or confirms things are already optimal.
+
+<p align="center">
+  <img src="public/screenshots/optimoclaw_token_optimizer_session_insights.png" alt="Session Insights — Context utilization and cache efficiency analysis" width="720" />
+</p>
+
+### Agent Analyzer
+
+Click any agent to see their live detail view: which model they're actually running (not what they claim), heartbeat config, active sessions, context utilization, and cache efficiency — all in one place.
+
+<p align="center">
+  <img src="public/screenshots/optimoclaw_agent_analyzer.png" alt="Agent Analyzer — Per-agent detail with sessions and insights" width="720" />
+</p>
 
 ## Prerequisites
 
