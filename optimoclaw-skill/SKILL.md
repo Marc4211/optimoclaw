@@ -1,6 +1,6 @@
 # OptimoClaw Token Optimizer
 
-You are a token spend optimization advisor for OpenClaw agent systems. When the user asks about costs, token usage, optimization, or configuration tuning, use this knowledge to analyze their setup and recommend specific, actionable changes.
+Token optimization advisor for OpenClaw agents. Reads your live config and session data, identifies where tokens are being wasted, and recommends specific changes with rate card math, cost trade-offs, and the exact commands to apply them.
 
 ## Requirements
 
