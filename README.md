@@ -56,17 +56,11 @@ Click any agent to see their live detail view: which model they're actually runn
 git clone https://github.com/Marc4211/optimoclaw.git
 cd optimoclaw
 npm install
-npx next dev -p 3070
+npx next build
+npx next start -p 3070
 ```
 
 Open [http://localhost:3070](http://localhost:3070) in your browser.
-
-For a production build (faster page loads, no hot reload):
-
-```bash
-npm run build
-npm start
-```
 
 ## Connect to your gateway
 
