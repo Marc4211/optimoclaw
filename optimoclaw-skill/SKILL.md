@@ -1,26 +1,8 @@
----
-name: OptimoClaw Token Optimizer
-version: 1.0.1
-homepage: https://github.com/Marc4211/optimoclaw
-author: Marc Scibelli
-license: MIT
-requires:
-  binaries:
-    - openclaw
-  config_paths:
-    - agents.defaults
-    - plugins.entries.lossless-claw.config
-data_access:
-  reads:
-    - "openclaw config get 'agents' --json (agent names, models, heartbeat settings, thresholds)"
-    - "openclaw status --usage --json (token counts, cache ratios, context utilization)"
-  writes: none (recommends commands only, does not auto-execute)
-  sensitive_fields: "Outputs may include profile names, model identifiers, and gateway connection details. No API keys or authentication tokens are returned by these commands."
----
-
 # OptimoClaw Token Optimizer
 
 Token optimization advisor for OpenClaw agents. Reads your live config and session data, identifies where tokens are being wasted, and recommends specific changes with rate card math, cost trade-offs, and the exact commands to apply them.
+
+**Source:** https://github.com/Marc4211/optimoclaw | **Author:** Marc Scibelli | **License:** MIT
 
 ## Requirements
 
