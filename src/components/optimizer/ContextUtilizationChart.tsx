@@ -218,7 +218,7 @@ export default function ContextUtilizationChart({ data }: Props) {
       <div className="space-y-4 mb-6" data-list="context-sessions">
         {sorted.map((session, idx) => (
           <div
-            key={session.agentId + session.kind}
+            key={`${session.agentId}-${session.kind}-${idx}`}
             className="group"
             data-agent={session.agentId}
             data-model={session.model}
