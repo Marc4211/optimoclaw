@@ -1,3 +1,7 @@
+// Copyright 2026 Cisco Systems, Inc. and its affiliates
+//
+// SPDX-License-Identifier: MIT
+
 import { Activity } from "lucide-react";
 import EmptyState from "@/components/EmptyState";
 
